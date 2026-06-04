@@ -1,0 +1,42 @@
+name: Sync OpenAPI spec
+
+# Keeps openapi.json in lockstep with the spec the live GPU.ai API actually serves.
+# The deployed API (/v1/openapi.json) is the source of truth; this repo is a public
+# mirror. Runs daily and on demand. Uses the built-in GITHUB_TOKEN — no secrets needed.
+
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  SPEC_URL: https://api.demo.gpu.ai/v1/openapi.json
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch live spec
+        run: |
+          set -euo pipefail
+          curl -fsS "$SPEC_URL" | jq . > openapi.json
+          echo "Fetched $(wc -c < openapi.json) bytes from $SPEC_URL"
+
+      - name: Commit if changed
+        run: |
+          set -euo pipefail
+          if git diff --quiet -- openapi.json; then
+            echo "No change — spec is up to date."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          ver=$(jq -r '.info.version' openapi.json)
+          git add openapi.json
+          git commit -m "chore: sync OpenAPI spec (v${ver}) from live API [skip ci]"
+          git push

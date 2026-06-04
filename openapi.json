@@ -1,0 +1,2232 @@
+{
+  "components": {
+    "parameters": {
+      "CursorParam": {
+        "in": "query",
+        "name": "cursor",
+        "schema": {
+          "type": "string"
+        }
+      },
+      "IdempotencyKeyHeader": {
+        "in": "header",
+        "name": "Idempotency-Key",
+        "schema": {
+          "maxLength": 255,
+          "type": "string"
+        }
+      },
+      "LimitParam": {
+        "in": "query",
+        "name": "limit",
+        "schema": {
+          "default": 50,
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        }
+      }
+    },
+    "requestBodies": {
+      "CreateInstance": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "properties": {
+                "env": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "Per-deploy env overrides; only keys the template marks user_overridable are accepted (others 422). Secret values are redacted from operation metadata.",
+                  "type": "object"
+                },
+                "gpu_count": {
+                  "maximum": 8,
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "gpu_type": {
+                  "type": "string"
+                },
+                "max_price_per_hour": {
+                  "format": "double",
+                  "type": "number"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                },
+                "ssh_key_ids": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "template_id": {
+                  "description": "Deploy a curated application template (e.g. comfyui, vllm). When set, gpu_type may be omitted — the cheapest eligible GPU is auto-selected.",
+                  "type": "string"
+                },
+                "tier": {
+                  "enum": [
+                    "spot",
+                    "on_demand"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "gpu_type",
+                "gpu_count",
+                "tier"
+              ],
+              "type": "object"
+            }
+          }
+        },
+        "required": true
+      }
+    },
+    "responses": {
+      "GPUTypePage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GPUTypePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "InstancePage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/InstancePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "OpenAIBadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Invalid request (OpenAI error envelope)."
+      },
+      "OpenAIEmbeddings": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/EmbeddingsResponse"
+            }
+          }
+        },
+        "description": "OpenAI-shaped embeddings response."
+      },
+      "OpenAIForbidden": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "API key lacks the required scope (OpenAI error envelope)."
+      },
+      "OpenAIInternalError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Internal server error (OpenAI error envelope)."
+      },
+      "OpenAIModel": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Model"
+            }
+          }
+        },
+        "description": "OpenAI-shaped single model."
+      },
+      "OpenAIModelsList": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ModelList"
+            }
+          }
+        },
+        "description": "OpenAI-shaped model list."
+      },
+      "OpenAINotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Model or resource not found (OpenAI error envelope)."
+      },
+      "OpenAIPaymentRequired": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Insufficient balance (OpenAI error envelope, SERV-06)."
+      },
+      "OpenAIRateLimited": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Rate limit exceeded (OpenAI error envelope). Retry-After header indicates seconds to wait.",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds the client should wait before retrying.",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "OpenAIUnauthorized": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Missing or invalid API key (OpenAI error envelope)."
+      },
+      "OpenAIUnprocessableEntity": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Request validation failed (OpenAI error envelope)."
+      },
+      "OpenAIUpstreamTimeout": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Upstream provider exceeded the synchronous per-attempt deadline (OpenAI\nerror envelope). 504 semantic — distinct from 503 OpenAIUpstreamUnavailable\nwhich signals a connection or routing failure rather than a timeout.\n"
+      },
+      "OpenAIUpstreamUnavailable": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Upstream provider unavailable (OpenAI error envelope). Retry-After header may indicate seconds to wait.",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds the client should wait before retrying.",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "PricingPage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/PricingPage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "Problem": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description": "Error response (RFC 7807)"
+      },
+      "RateLimited": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description": "Rate limit exceeded (RFC 7807). Retry-After header indicates seconds to wait.",
+        "headers": {
+          "Retry-After": {
+            "description": "Seconds the client should wait before retrying.",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "SSHKeyPage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SSHKeyPage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "UsagePage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/UsagePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "WebhookEndpointPage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WebhookEndpointPage"
+            }
+          }
+        },
+        "description": "OK"
+      }
+    },
+    "schemas": {
+      "ChatChoice": {
+        "properties": {
+          "finish_reason": {
+            "enum": [
+              "stop",
+              "length",
+              "content_filter",
+              "tool_calls"
+            ],
+            "type": "string"
+          },
+          "index": {
+            "type": "integer"
+          },
+          "message": {
+            "$ref": "#/components/schemas/ChatMessage"
+          }
+        },
+        "type": "object"
+      },
+      "ChatCompletionRequest": {
+        "properties": {
+          "max_tokens": {
+            "minimum": 1,
+            "nullable": true,
+            "type": "integer"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessage"
+            },
+            "type": "array"
+          },
+          "model": {
+            "description": "Canonical model id, e.g. \"gpuai/qwen2.5-7b-instruct\".",
+            "type": "string"
+          },
+          "stream": {
+            "default": false,
+            "type": "boolean"
+          },
+          "stream_options": {
+            "$ref": "#/components/schemas/StreamOptions"
+          },
+          "temperature": {
+            "nullable": true,
+            "type": "number"
+          }
+        },
+        "required": [
+          "model",
+          "messages"
+        ],
+        "type": "object"
+      },
+      "ChatCompletionResponse": {
+        "properties": {
+          "choices": {
+            "items": {
+              "$ref": "#/components/schemas/ChatChoice"
+            },
+            "type": "array"
+          },
+          "created": {
+            "description": "Unix timestamp (seconds).",
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "description": "Canonical (gpuai/...) model id, NEVER the upstream HF path.",
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "chat.completion"
+            ],
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/Usage"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created",
+          "model",
+          "choices",
+          "usage"
+        ],
+        "type": "object"
+      },
+      "ChatMessage": {
+        "properties": {
+          "content": {
+            "type": "string"
+          },
+          "role": {
+            "enum": [
+              "system",
+              "user",
+              "assistant"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ],
+        "type": "object"
+      },
+      "EmbeddingsRequest": {
+        "properties": {
+          "dimensions": {
+            "description": "Optional output dimension. Rejected unless the model declares \"dimensions\" in supported_parameters (Matryoshka-trained only).",
+            "type": "integer"
+          },
+          "encoding_format": {
+            "enum": [
+              "float",
+              "base64"
+            ],
+            "type": "string"
+          },
+          "input": {
+            "description": "A string OR an array of strings to embed.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "model": {
+            "description": "Customer-facing model id (e.g. gpuai/bge-large-en-v1.5) or alias.",
+            "type": "string"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "input"
+        ],
+        "type": "object"
+      },
+      "EmbeddingsResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "properties": {
+                "embedding": {
+                  "items": {
+                    "format": "float",
+                    "type": "number"
+                  },
+                  "type": "array"
+                },
+                "index": {
+                  "type": "integer"
+                },
+                "object": {
+                  "enum": [
+                    "embedding"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "object",
+                "embedding",
+                "index"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "model": {
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          },
+          "usage": {
+            "properties": {
+              "prompt_tokens": {
+                "type": "integer"
+              },
+              "total_tokens": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "prompt_tokens",
+              "total_tokens"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "model",
+          "usage"
+        ],
+        "type": "object"
+      },
+      "GPUType": {
+        "properties": {
+          "architecture": {
+            "type": "string"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "vram_gb": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "gpu_type",
+          "vram_gb"
+        ],
+        "type": "object"
+      },
+      "GPUTypePage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/GPUType"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Instance": {
+        "properties": {
+          "connection": {
+            "nullable": true,
+            "properties": {
+              "app_url": {
+                "description": "HTTPS URL of the deployed application (template instances only), e.g. https://gpu-abcd1234.apps.gpu.ai.",
+                "type": "string"
+              },
+              "hostname": {
+                "type": "string"
+              },
+              "port": {
+                "type": "integer"
+              },
+              "ssh_command": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "nullable": true,
+            "type": "string"
+          },
+          "price_per_hour": {
+            "format": "double",
+            "type": "number"
+          },
+          "ready_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "creating",
+              "provisioning",
+              "booting",
+              "running",
+              "stopping",
+              "stopped",
+              "terminated",
+              "error"
+            ],
+            "type": "string"
+          },
+          "terminated_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "spot",
+              "on_demand"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "gpu_type",
+          "gpu_count",
+          "region",
+          "tier",
+          "price_per_hour",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "InstancePage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Instance"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Model": {
+        "properties": {
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "context_length": {
+            "type": "integer"
+          },
+          "created": {
+            "type": "integer"
+          },
+          "embedding_dimensions": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "modality": {
+            "enum": [
+              "chat",
+              "image",
+              "embedding"
+            ],
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "model"
+            ],
+            "type": "string"
+          },
+          "owned_by": {
+            "type": "string"
+          },
+          "pricing": {
+            "properties": {
+              "currency": {
+                "type": "string"
+              },
+              "input_per_1m_tokens_cents": {
+                "type": "integer"
+              },
+              "output_per_1m_tokens_cents": {
+                "type": "integer"
+              },
+              "per_image_cents": {
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "coming_soon",
+              "deprecated"
+            ],
+            "type": "string"
+          },
+          "supported_parameters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "owned_by",
+          "modality",
+          "status",
+          "pricing"
+        ],
+        "type": "object"
+      },
+      "ModelList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Model"
+            },
+            "type": "array"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data"
+        ],
+        "type": "object"
+      },
+      "OpenAIErrorEnvelope": {
+        "properties": {
+          "error": {
+            "properties": {
+              "code": {
+                "description": "Stable machine-readable error code.",
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "param": {
+                "nullable": true,
+                "type": "string"
+              },
+              "type": {
+                "description": "OpenAI error class (e.g. invalid_request_error, authentication_error, billing_error).",
+                "type": "string"
+              }
+            },
+            "required": [
+              "message",
+              "type",
+              "code"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "type": "object"
+      },
+      "Operation": {
+        "properties": {
+          "completed_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "error": {
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "detail": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "kind": {
+            "enum": [
+              "instance.create",
+              "instance.delete"
+            ],
+            "type": "string"
+          },
+          "operation_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "resource_id": {
+            "nullable": true,
+            "type": "string"
+          },
+          "result": {
+            "description": "Terminal-success payload. For template deploys this carries the one-time app credential — returned by GET /operations/{id} exactly once; never on GET /instances/{id}.",
+            "properties": {
+              "app_basic_auth_pass": {
+                "type": "string"
+              },
+              "app_basic_auth_user": {
+                "type": "string"
+              },
+              "app_url": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "in_progress",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "kind",
+          "state",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "Pricing": {
+        "properties": {
+          "available": {
+            "description": "count of available units",
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "price_per_hour": {
+            "format": "double",
+            "type": "number"
+          },
+          "region": {
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "spot",
+              "on_demand"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "gpu_type",
+          "region",
+          "tier",
+          "price_per_hour",
+          "available"
+        ],
+        "type": "object"
+      },
+      "PricingPage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Pricing"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Problem": {
+        "properties": {
+          "code": {
+            "enum": [
+              "unauthenticated",
+              "invalid_api_key",
+              "insufficient_scope",
+              "not_found",
+              "idempotency_conflict",
+              "idempotency_mismatch",
+              "validation_failed",
+              "invalid_gpu_type",
+              "insufficient_balance",
+              "quota_exceeded",
+              "rate_limited",
+              "internal_error",
+              "operation_failed"
+            ],
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "request_id": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "code",
+          "request_id"
+        ],
+        "type": "object"
+      },
+      "SSHKey": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "fingerprint": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "fingerprint",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "SSHKeyPage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/SSHKey"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "StreamOptions": {
+        "properties": {
+          "include_usage": {
+            "default": true,
+            "description": "When true, the final stream chunk carries usage totals (CHAT-03).",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "Template": {
+        "description": "A deployable application template. The container image (registry path) and start command are internal orchestration details and are intentionally absent from this schema (TMPL-13 defense-by-omission).",
+        "properties": {
+          "category": {
+            "type": "string"
+          },
+          "container_disk_gb": {
+            "type": "integer"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "docs_url": {
+            "type": "string"
+          },
+          "env": {
+            "items": {
+              "properties": {
+                "default": {
+                  "type": "string"
+                },
+                "key": {
+                  "type": "string"
+                },
+                "secret": {
+                  "type": "boolean"
+                },
+                "user_overridable": {
+                  "type": "boolean"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "service"
+            ],
+            "type": "string"
+          },
+          "min_gpu_count": {
+            "type": "integer"
+          },
+          "min_vram_gb": {
+            "type": "integer"
+          },
+          "ports": {
+            "items": {
+              "properties": {
+                "port": {
+                  "type": "integer"
+                },
+                "primary": {
+                  "type": "boolean"
+                },
+                "protocol": {
+                  "enum": [
+                    "http",
+                    "tcp"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "coming_soon"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "display_name",
+          "category",
+          "kind",
+          "ports"
+        ],
+        "type": "object"
+      },
+      "TemplateList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Template"
+            },
+            "type": "array"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data"
+        ],
+        "type": "object"
+      },
+      "Usage": {
+        "properties": {
+          "completion_tokens": {
+            "type": "integer"
+          },
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens"
+        ],
+        "type": "object"
+      },
+      "UsageBucket": {
+        "properties": {
+          "bucket_start": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cost_cents": {
+            "type": "integer"
+          },
+          "gpu_seconds": {
+            "type": "integer"
+          },
+          "gpu_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "instance_id": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "bucket_start",
+          "gpu_seconds",
+          "cost_cents"
+        ],
+        "type": "object"
+      },
+      "UsagePage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/UsageBucket"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "WebhookEndpoint": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "event_types": {
+            "items": {
+              "enum": [
+                "instance.creating",
+                "instance.running",
+                "instance.terminated",
+                "instance.failed"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "secret": {
+            "description": "Returned ONLY at creation; subsequent reads omit.",
+            "type": "string"
+          },
+          "url": {
+            "format": "uri",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "event_types",
+          "enabled",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "WebhookEndpointPage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WebhookEndpoint"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "nullable": true,
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "bearerAuth": {
+        "bearerFormat": "gpuai_live_<24-base62>",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "email": "support@gpu.ai",
+      "name": "GPU.ai Support"
+    },
+    "description": "Programmatic API for GPU.ai. Authenticate with API keys minted from\nthe dashboard. See https://gpu.ai/docs for details.\n",
+    "title": "GPU.ai Public Developer API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/chat/completions": {
+      "post": {
+        "operationId": "createChatCompletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "description": "Server-Sent Events stream of ChatCompletionChunk objects, terminated by `data: [DONE]`.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Successful response. application/json for non-streaming requests;\ntext/event-stream for streaming requests (stream=true).\n"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/OpenAIUnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a chat completion (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/embeddings": {
+      "post": {
+        "operationId": "createEmbeddings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIEmbeddings"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/OpenAIUnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/OpenAIUpstreamTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create embeddings (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/gpu-types": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/GPUTypePage"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "List available GPU types (no auth required)"
+      }
+    },
+    "/health": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "const": "ok",
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "Liveness probe"
+      }
+    },
+    "/instances": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/InstancePage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List instances"
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "$ref": "#/components/requestBodies/CreateInstance"
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "Accepted; long-running operation",
+            "headers": {
+              "Operation-Id": {
+                "description": "Use GET /operations/{id} to poll",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create an instance (async — returns 202 + Operation-Id header)"
+      }
+    },
+    "/instances/{id}": {
+      "delete": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "Accepted; termination in progress",
+            "headers": {
+              "Operation-Id": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Already gone — idempotent terminate (D-07)"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Terminate an instance (idempotent)"
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get an instance"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Instance"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Update an instance (rename only in v1)"
+      }
+    },
+    "/models": {
+      "get": {
+        "operationId": "listModels",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "modality",
+            "required": false,
+            "schema": {
+              "enum": [
+                "chat",
+                "image",
+                "embedding"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIModelsList"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List available models (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/models/{id}": {
+      "get": {
+        "operationId": "getModel",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIModel"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a specific model (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          }
+        },
+        "security": [],
+        "summary": "OpenAPI 3.1 specification"
+      }
+    },
+    "/operations/{id}": {
+      "get": {
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get an async operation status"
+      }
+    },
+    "/pricing": {
+      "get": {
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/PricingPage"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "List pricing per GPU type + region (no auth required)"
+      }
+    },
+    "/ssh-keys": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/SSHKeyPage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List SSH keys"
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "public_key": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "public_key"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHKey"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create an SSH key"
+      }
+    },
+    "/ssh-keys/{id}": {
+      "delete": {
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Already deleted (idempotent)"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete an SSH key (idempotent — 404 on already-gone per D-07)"
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SSHKey"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get an SSH key"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/templates": {
+      "get": {
+        "operationId": "listTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemplateList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List deployable application templates",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/templates/{id}": {
+      "get": {
+        "operationId": "getTemplate",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Template"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get one deployable application template",
+        "tags": [
+          "Templates"
+        ]
+      }
+    },
+    "/usage": {
+      "get": {
+        "parameters": [
+          {
+            "in": "query",
+            "name": "bucket",
+            "schema": {
+              "enum": [
+                "hour",
+                "day",
+                "week",
+                "month"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "group_by",
+            "schema": {
+              "enum": [
+                "instance_id",
+                "gpu_type"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "start",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "end",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/UsagePage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Time-bucketed usage"
+      }
+    },
+    "/webhook-endpoints": {
+      "get": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/WebhookEndpointPage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List webhook endpoints"
+      },
+      "post": {
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "event_types": {
+                    "items": {
+                      "enum": [
+                        "instance.creating",
+                        "instance.running",
+                        "instance.terminated",
+                        "instance.failed"
+                      ],
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "url": {
+                    "format": "uri",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "event_types"
+                ],
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a webhook endpoint"
+      }
+    },
+    "/webhook-endpoints/{id}": {
+      "delete": {
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a webhook endpoint"
+      },
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a webhook endpoint"
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ]
+    }
+  },
+  "security": [
+    {
+      "bearerAuth": []
+    }
+  ],
+  "servers": [
+    {
+      "description": "Production",
+      "url": "https://api.gpu.ai/v1"
+    },
+    {
+      "description": "Demo",
+      "url": "https://api.demo.gpu.ai/v1"
+    }
+  ]
+}
