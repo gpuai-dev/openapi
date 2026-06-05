@@ -1093,8 +1093,10 @@
             "type": "string"
           },
           "kind": {
+            "description": "Deployable kind. \"service\" is a long-running app exposed at connection.app_url. \"finetuning\" is a run-to-completion job (no app_url) and is currently advertised only as a coming-soon catalog entry — not yet deployable.",
             "enum": [
-              "service"
+              "service",
+              "finetuning"
             ],
             "type": "string"
           },
