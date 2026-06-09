@@ -442,6 +442,71 @@
         ],
         "type": "object"
       },
+      "CreateFineTuningJobRequest": {
+        "description": "Request body for POST /fine_tuning/jobs. The `method` object carries the Axolotl LoRA/QLoRA hyperparameters; `gpuai` is a native extension for the optional budget cap and GPU preference. The backing training environment (image, GPU provider) is an internal orchestration detail and is intentionally absent from this schema (privacy-by-omission, D6).",
+        "properties": {
+          "gpuai": {
+            "properties": {
+              "gpu_preference": {
+                "type": "string"
+              },
+              "max_budget_usd": {
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          "method": {
+            "properties": {
+              "lora": {
+                "properties": {
+                  "lora_alpha": {
+                    "type": "integer"
+                  },
+                  "lora_dropout": {
+                    "type": "number"
+                  },
+                  "lora_r": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "enum": [
+                  "lora",
+                  "qlora"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "type"
+            ],
+            "type": "object"
+          },
+          "model": {
+            "description": "An operator-curated tunable base model id.",
+            "type": "string"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "suffix": {
+            "type": "string"
+          },
+          "training_file": {
+            "description": "The id of a previously uploaded file (purpose=fine-tune).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "training_file",
+          "method"
+        ],
+        "type": "object"
+      },
       "EmbeddingsRequest": {
         "properties": {
           "dimensions": {
@@ -544,6 +609,253 @@
           "data",
           "model",
           "usage"
+        ],
+        "type": "object"
+      },
+      "FileObject": {
+        "description": "An uploaded file object. The storage location is an internal detail and is intentionally absent from this schema (privacy-by-omission, D6).",
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "Unix timestamp (seconds).",
+            "type": "integer"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "file"
+            ],
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "fine-tune"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "bytes",
+          "created_at",
+          "filename",
+          "purpose"
+        ],
+        "type": "object"
+      },
+      "FineTuningJob": {
+        "description": "The fine-tuning job object. `status` is the COLLAPSED public enum (the rich internal states are hidden). `result_files` are freshly-presigned, short-lived download URLs regenerated per read. No backing-provider identity is present (D6).",
+        "properties": {
+          "created_at": {
+            "description": "Unix timestamp (seconds) at creation.",
+            "type": "integer"
+          },
+          "error": {
+            "nullable": true,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              },
+              "param": {
+                "nullable": true,
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "fine_tuned_model": {
+            "description": "Null in this release (catalog auto-serve is a later phase).",
+            "nullable": true,
+            "type": "string"
+          },
+          "finished_at": {
+            "description": "Unix timestamp (seconds) at terminal state; null until terminal.",
+            "nullable": true,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "metadata": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "method": {
+            "properties": {
+              "lora": {
+                "properties": {
+                  "lora_alpha": {
+                    "type": "integer"
+                  },
+                  "lora_dropout": {
+                    "type": "number"
+                  },
+                  "lora_r": {
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              },
+              "type": {
+                "enum": [
+                  "lora",
+                  "qlora"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "model": {
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "fine_tuning.job"
+            ],
+            "type": "string"
+          },
+          "result_files": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "seed": {
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "validating",
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "suffix": {
+            "type": "string"
+          },
+          "training_file": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "created_at",
+          "status",
+          "training_file",
+          "result_files"
+        ],
+        "type": "object"
+      },
+      "FineTuningJobEvent": {
+        "properties": {
+          "created_at": {
+            "description": "Unix timestamp (seconds).",
+            "type": "integer"
+          },
+          "data": {
+            "additionalProperties": true,
+            "nullable": true,
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "level": {
+            "enum": [
+              "info",
+              "warn",
+              "error"
+            ],
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "fine_tuning.job.event"
+            ],
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "created_at",
+          "level",
+          "message"
+        ],
+        "type": "object"
+      },
+      "FineTuningJobEventList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FineTuningJobEvent"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
+        ],
+        "type": "object"
+      },
+      "FineTuningJobList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FineTuningJob"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
         ],
         "type": "object"
       },
@@ -1438,6 +1750,351 @@
         "summary": "Create embeddings (OpenAI-compatible)",
         "tags": [
           "Inference"
+        ]
+      }
+    },
+    "/files": {
+      "post": {
+        "operationId": "createFile",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "properties": {
+                  "file": {
+                    "description": "A JSONL chat-format training dataset.",
+                    "format": "binary",
+                    "type": "string"
+                  },
+                  "purpose": {
+                    "enum": [
+                      "fine-tune"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "purpose",
+                  "file"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObject"
+                }
+              }
+            },
+            "description": "The uploaded file object."
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Upload a fine-tuning dataset file (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      }
+    },
+    "/fine_tuning/jobs": {
+      "get": {
+        "operationId": "listFineTuningJobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningJobList"
+                }
+              }
+            },
+            "description": "A page of fine-tuning jobs."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List fine-tuning jobs (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      },
+      "post": {
+        "operationId": "createFineTuningJob",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFineTuningJobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningJob"
+                }
+              }
+            },
+            "description": "The created fine-tuning job."
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/OpenAIUnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a managed fine-tuning job (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      }
+    },
+    "/fine_tuning/jobs/{id}": {
+      "get": {
+        "operationId": "getFineTuningJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningJob"
+                }
+              }
+            },
+            "description": "The fine-tuning job."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Retrieve a fine-tuning job (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      }
+    },
+    "/fine_tuning/jobs/{id}/cancel": {
+      "post": {
+        "operationId": "cancelFineTuningJob",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningJob"
+                }
+              }
+            },
+            "description": "The cancelled fine-tuning job."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Cancel a fine-tuning job (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      }
+    },
+    "/fine_tuning/jobs/{id}/events": {
+      "get": {
+        "operationId": "listFineTuningJobEvents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FineTuningJobEventList"
+                }
+              }
+            },
+            "description": "A page of fine-tuning job events."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List fine-tuning job events (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
         ]
       }
     },
