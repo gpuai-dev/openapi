@@ -1013,6 +1013,14 @@
             },
             "type": "array"
           },
+          "author": {
+            "description": "Model creator/organization (e.g. \"Meta\", \"Qwen\", \"Black Forest Labs\").",
+            "type": "string"
+          },
+          "category": {
+            "description": "Browse-facing category; mirrors modality (chat/image/video/embedding).",
+            "type": "string"
+          },
           "context_length": {
             "type": "integer"
           },
@@ -1029,6 +1037,7 @@
             "enum": [
               "chat",
               "image",
+              "video",
               "embedding"
             ],
             "type": "string"
@@ -1054,6 +1063,18 @@
                 "type": "integer"
               },
               "per_image_cents": {
+                "type": "integer"
+              },
+              "per_image_microcents": {
+                "description": "Exact per-image rate in micro-cents (1e-6 cent). Prefer this for image models — per_image_cents rounds sub-cent prices to 0.",
+                "type": "integer"
+              },
+              "per_mpxl_microcents": {
+                "description": "Price per output megapixel in micro-cents (1e-6 cent) for image models metered per megapixel. Mutually exclusive with the per-image fields.",
+                "type": "integer"
+              },
+              "per_video_microcents": {
+                "description": "Representative per-clip price in micro-cents (1e-6 cent) for video models — a \"from\" price taken from the provider's published example rate.",
                 "type": "integer"
               }
             },
@@ -2333,6 +2354,7 @@
               "enum": [
                 "chat",
                 "image",
+                "video",
                 "embedding"
               ],
               "type": "string"
