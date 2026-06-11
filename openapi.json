@@ -49,6 +49,7 @@
                   "type": "string"
                 },
                 "max_price_per_hour": {
+                  "description": "maximum acceptable whole-instance hourly price (catalog price)",
                   "format": "double",
                   "type": "number"
                 },
@@ -138,6 +139,26 @@
           }
         },
         "description": "API key lacks the required scope (OpenAI error envelope)."
+      },
+      "OpenAIGone": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "The requested artifact has expired and is no longer available (OpenAI error envelope)."
+      },
+      "OpenAIImages": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/ImagesResponse"
+            }
+          }
+        },
+        "description": "OpenAI-shaped image generation response (b64_json only)."
       },
       "OpenAIInternalError": {
         "content": {
@@ -256,6 +277,26 @@
             }
           }
         }
+      },
+      "OpenAIVideo": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/VideoJob"
+            }
+          }
+        },
+        "description": "A video generation job object."
+      },
+      "OpenAIVideoList": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/VideoList"
+            }
+          }
+        },
+        "description": "A page of video generation jobs."
       },
       "PricingPage": {
         "content": {
@@ -896,6 +937,82 @@
         ],
         "type": "object"
       },
+      "ImagesGenerationsRequest": {
+        "properties": {
+          "model": {
+            "description": "Customer-facing image model id (e.g. gpuai/flux.1-schnell) or alias.",
+            "type": "string"
+          },
+          "n": {
+            "default": 1,
+            "description": "Number of images to generate. Defaults to 1.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "prompt": {
+            "description": "Text description of the image(s) to generate.",
+            "type": "string"
+          },
+          "response_format": {
+            "default": "b64_json",
+            "description": "Only b64_json is supported. A value of \"url\" is rejected with invalid_request_error until S3-backed URL delivery lands.",
+            "enum": [
+              "b64_json"
+            ],
+            "type": "string"
+          },
+          "size": {
+            "description": "Output image dimensions as WxH (e.g. 1024x1024).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "ImagesResponse": {
+        "properties": {
+          "created": {
+            "description": "Unix timestamp (seconds) when the response was created.",
+            "type": "integer"
+          },
+          "data": {
+            "items": {
+              "properties": {
+                "b64_json": {
+                  "description": "Base64-encoded image bytes.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "b64_json"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "usage": {
+            "properties": {
+              "image_count": {
+                "description": "Number of images generated (the billable unit).",
+                "type": "integer"
+              }
+            },
+            "required": [
+              "image_count"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "created",
+          "data",
+          "usage"
+        ],
+        "type": "object"
+      },
       "Instance": {
         "properties": {
           "connection": {
@@ -937,6 +1054,7 @@
             "type": "string"
           },
           "price_per_hour": {
+            "description": "hourly rate for the whole instance — covers all gpu_count GPUs",
             "format": "double",
             "type": "number"
           },
@@ -1051,6 +1169,46 @@
           "owned_by": {
             "type": "string"
           },
+          "parameters": {
+            "description": "Typed parameter descriptors for media (image/video) models — name, type, enum/bounds/default. Playgrounds render input forms from these.",
+            "items": {
+              "properties": {
+                "default": {
+                  "description": "Default value for the field (any JSON scalar)."
+                },
+                "enum": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "max": {
+                  "type": "integer"
+                },
+                "min": {
+                  "type": "integer"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "enum": [
+                    "enum",
+                    "int",
+                    "string",
+                    "bool"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "pricing": {
             "properties": {
               "currency": {
@@ -1075,6 +1233,13 @@
               },
               "per_video_microcents": {
                 "description": "Representative per-clip price in micro-cents (1e-6 cent) for video models — a \"from\" price taken from the provider's published example rate.",
+                "type": "integer"
+              },
+              "per_video_second_cents": {
+                "type": "integer"
+              },
+              "per_video_second_microcents": {
+                "description": "Exact per-second-of-output-video rate in micro-cents (1e-6 cent). Prefer this for video models.",
                 "type": "integer"
               }
             },
@@ -1244,7 +1409,12 @@
           "gpu_type": {
             "type": "string"
           },
+          "instant_boot": {
+            "description": "true when instances of this offering are typically reachable within about a minute of launch; false for capacity with longer provisioning times (~3-5 minutes)",
+            "type": "boolean"
+          },
           "price_per_hour": {
+            "description": "hourly price for the whole listed configuration — covers all gpu_count GPUs",
             "format": "double",
             "type": "number"
           },
@@ -1264,7 +1434,8 @@
           "region",
           "tier",
           "price_per_hour",
-          "available"
+          "available",
+          "instant_boot"
         ],
         "type": "object"
       },
@@ -1560,6 +1731,127 @@
         "required": [
           "data",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "VideoCreateRequest": {
+        "properties": {
+          "model": {
+            "description": "Customer-facing video model id (e.g. gpuai/wan-2.2-t2v) or alias.",
+            "type": "string"
+          },
+          "prompt": {
+            "description": "Text description of the video to generate.",
+            "type": "string"
+          },
+          "seconds": {
+            "description": "Output video duration in seconds (the billable unit).",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "size": {
+            "description": "Output video dimensions as WxH (e.g. 1280x720).",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "prompt"
+        ],
+        "type": "object"
+      },
+      "VideoJob": {
+        "properties": {
+          "completed_at": {
+            "description": "Unix timestamp (seconds) when the job completed.",
+            "nullable": true,
+            "type": "integer"
+          },
+          "cost_cents": {
+            "description": "Final billed cost in cents; present once the job completes (failed/cancelled jobs are never billed).",
+            "nullable": true,
+            "type": "integer"
+          },
+          "created_at": {
+            "description": "Unix timestamp (seconds) when the job was created.",
+            "type": "integer"
+          },
+          "error": {
+            "description": "Canonical failure code when status is failed.",
+            "nullable": true,
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "Unix timestamp (seconds) when the artifact expires (24h after completion).",
+            "nullable": true,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "video"
+            ],
+            "type": "string"
+          },
+          "progress": {
+            "description": "Generation progress 0-100.",
+            "type": "integer"
+          },
+          "seconds": {
+            "type": "integer"
+          },
+          "size": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "in_progress",
+              "completed",
+              "failed",
+              "cancelled",
+              "expired"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "model",
+          "status",
+          "progress",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "VideoList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/VideoJob"
+            },
+            "type": "array"
+          },
+          "has_more": {
+            "type": "boolean"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "has_more"
         ],
         "type": "object"
       },
@@ -2165,6 +2457,71 @@
         "summary": "Liveness probe"
       }
     },
+    "/images/generations": {
+      "post": {
+        "description": "Synchronous text-to-image generation. Returns base64-encoded images only (`response_format` is restricted to `b64_json`); a value of `url` is rejected with `invalid_request_error` until S3-backed URL delivery lands. Pass an `Idempotency-Key` header to make a retried request replay the original response without a second charge.",
+        "operationId": "createImage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImagesGenerationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIImages"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/OpenAIUnprocessableEntity"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/OpenAIUpstreamTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create image (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
     "/instances": {
       "get": {
         "parameters": [
@@ -2763,6 +3120,246 @@
           }
         },
         "summary": "Time-bucketed usage"
+      }
+    },
+    "/videos": {
+      "get": {
+        "operationId": "listVideos",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIVideoList"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List video generation jobs",
+        "tags": [
+          "Inference"
+        ]
+      },
+      "post": {
+        "description": "Submit an asynchronous text-to-video generation job. Returns a job object with status `queued`; poll GET /videos/{id} until `completed`, then stream the result from GET /videos/{id}/content. Pass an `Idempotency-Key` header to make a retried request replay the original response without a second charge.",
+        "operationId": "createVideo",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIVideo"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create a video generation job (async)",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/videos/{id}": {
+      "get": {
+        "operationId": "getVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIVideo"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get a video generation job",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/videos/{id}/cancel": {
+      "post": {
+        "operationId": "cancelVideo",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/OpenAIVideo"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "409": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Cancel a video generation job",
+        "tags": [
+          "Inference"
+        ]
+      }
+    },
+    "/videos/{id}/content": {
+      "get": {
+        "description": "Streams the generated MP4 for a completed job. Returns 410 Gone once the artifact has expired (24h retention).",
+        "operationId": "getVideoContent",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "video/mp4": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The generated video stream."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "410": {
+            "$ref": "#/components/responses/OpenAIGone"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Download a completed video artifact",
+        "tags": [
+          "Inference"
+        ]
       }
     },
     "/webhook-endpoints": {
