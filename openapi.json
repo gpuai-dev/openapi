@@ -1403,7 +1403,11 @@
       "Pricing": {
         "properties": {
           "available": {
-            "description": "count of available units",
+            "description": "count of available units, summed across merged identical offers",
+            "type": "integer"
+          },
+          "gpu_count": {
+            "description": "number of GPUs in the listed configuration",
             "type": "integer"
           },
           "gpu_type": {
@@ -1431,6 +1435,7 @@
         },
         "required": [
           "gpu_type",
+          "gpu_count",
           "region",
           "tier",
           "price_per_hour",
@@ -2524,12 +2529,30 @@
     },
     "/instances": {
       "get": {
+        "description": "Lists the organization's instances. By default terminated instances are excluded; pass status=terminated for the history or status=all for everything.",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
           },
           {
             "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "description": "Filter by customer-facing status (default = all non-terminated)",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "starting",
+                "running",
+                "stopping",
+                "stopped",
+                "terminated",
+                "error",
+                "all"
+              ],
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2841,6 +2864,52 @@
     },
     "/pricing": {
       "get": {
+        "description": "Lists every distinct offer (gpu_type, gpu_count, region, tier, price, boot class). Customer-identical offers are merged with availability summed. Offers with zero availability are omitted unless include_unavailable=true.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          },
+          {
+            "description": "Exact-match filter on gpu_type",
+            "in": "query",
+            "name": "gpu_type",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact-match filter on canonical region code",
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Exact-match filter on tier",
+            "in": "query",
+            "name": "tier",
+            "schema": {
+              "enum": [
+                "spot",
+                "on_demand"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Include offers whose current availability is zero",
+            "in": "query",
+            "name": "include_unavailable",
+            "schema": {
+              "default": false,
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "$ref": "#/components/responses/PricingPage"
@@ -2855,6 +2924,7 @@
     },
     "/ssh-keys": {
       "get": {
+        "description": "Returns the SSH keys owned by the user the API key was minted by. Org-wide key visibility is an admin capability in the dashboard.",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
