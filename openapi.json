@@ -2608,6 +2608,7 @@
     },
     "/instances/{id}": {
       "delete": {
+        "description": "Members can terminate only instances they created; organization admins can terminate any instance in the organization.",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -2630,6 +2631,16 @@
                 }
               }
             }
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Forbidden — members can only terminate instances they created"
           },
           "404": {
             "content": {
