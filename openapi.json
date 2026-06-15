@@ -1067,10 +1067,10 @@
             "type": "string"
           },
           "status": {
+            "description": "Customer-facing lifecycle status. \"allocating\" = the GPU is still being acquired from the provider (slow-boot capacity such as baremetal can take ~15 min); \"starting\" = the node exists and is booting; \"running\" = ready to use.",
             "enum": [
-              "creating",
-              "provisioning",
-              "booting",
+              "allocating",
+              "starting",
               "running",
               "stopping",
               "stopped",
@@ -2543,6 +2543,7 @@
             "name": "status",
             "schema": {
               "enum": [
+                "allocating",
                 "starting",
                 "running",
                 "stopping",
