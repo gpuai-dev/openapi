@@ -1553,6 +1553,63 @@
         ],
         "type": "object"
       },
+      "SpendingLimit": {
+        "properties": {
+          "auto_terminate_hours": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "billing_cycle_start": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current_day_spend_cents": {
+            "type": "integer"
+          },
+          "current_month_spend_cents": {
+            "type": "integer"
+          },
+          "current_month_spend_dollars": {
+            "type": "number"
+          },
+          "daily_limit_cents": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "daily_limit_dollars": {
+            "nullable": true,
+            "type": "number"
+          },
+          "enforcement": {
+            "enum": [
+              "stop_running",
+              "block_launch",
+              "notify_only"
+            ],
+            "type": "string"
+          },
+          "monthly_limit_cents": {
+            "type": "integer"
+          },
+          "monthly_limit_dollars": {
+            "type": "number"
+          },
+          "percent_used": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "monthly_limit_cents",
+          "monthly_limit_dollars",
+          "current_month_spend_cents",
+          "current_month_spend_dollars",
+          "percent_used",
+          "billing_cycle_start",
+          "enforcement",
+          "current_day_spend_cents"
+        ],
+        "type": "object"
+      },
       "StreamOptions": {
         "properties": {
           "include_usage": {
@@ -1942,6 +1999,97 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/billing/spending-limit": {
+      "get": {
+        "description": "Returns the organization's monthly spending limit and opt-in daily spend cap, with the current month and day spend. Requires the `billing:read` scope. Returns 404 when no limit is configured.\n",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpendingLimit"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get the org spending limit"
+      },
+      "put": {
+        "description": "Sets the monthly spending limit and optionally sets or clears the opt-in daily spend cap. Requires the `billing:write` scope AND org-admin privileges (a non-admin member gets 403). `daily_limit_dollars` uses pointer semantics: omit to leave the cap unchanged, 0 to clear it, a positive value to set it.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "auto_terminate_hours": {
+                    "description": "Hours after the limit is reached before auto-terminate; null = never.",
+                    "nullable": true,
+                    "type": "integer"
+                  },
+                  "daily_limit_dollars": {
+                    "description": "Opt-in daily cap in USD. Omit = unchanged, 0 = clear, > 0 = set.",
+                    "type": "number"
+                  },
+                  "enforcement": {
+                    "enum": [
+                      "stop_running",
+                      "block_launch",
+                      "notify_only"
+                    ],
+                    "type": "string"
+                  },
+                  "monthly_limit_dollars": {
+                    "description": "Monthly limit in USD (minimum 1.00).",
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "monthly_limit_dollars"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpendingLimit"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Set the org spending limit"
+      }
+    },
     "/chat/completions": {
       "post": {
         "operationId": "createChatCompletion",
