@@ -120,16 +120,6 @@
         },
         "description": "Invalid request (OpenAI error envelope)."
       },
-      "OpenAIEmbeddings": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/EmbeddingsResponse"
-            }
-          }
-        },
-        "description": "OpenAI-shaped embeddings response."
-      },
       "OpenAIForbidden": {
         "content": {
           "application/json": {
@@ -545,111 +535,6 @@
           "model",
           "training_file",
           "method"
-        ],
-        "type": "object"
-      },
-      "EmbeddingsRequest": {
-        "properties": {
-          "dimensions": {
-            "description": "Optional output dimension. Rejected unless the model declares \"dimensions\" in supported_parameters (Matryoshka-trained only).",
-            "type": "integer"
-          },
-          "encoding_format": {
-            "enum": [
-              "float",
-              "base64"
-            ],
-            "type": "string"
-          },
-          "input": {
-            "description": "A string OR an array of strings to embed.",
-            "oneOf": [
-              {
-                "type": "string"
-              },
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            ]
-          },
-          "model": {
-            "description": "Customer-facing model id (e.g. gpuai/bge-large-en-v1.5) or alias.",
-            "type": "string"
-          },
-          "user": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "model",
-          "input"
-        ],
-        "type": "object"
-      },
-      "EmbeddingsResponse": {
-        "properties": {
-          "data": {
-            "items": {
-              "properties": {
-                "embedding": {
-                  "items": {
-                    "format": "float",
-                    "type": "number"
-                  },
-                  "type": "array"
-                },
-                "index": {
-                  "type": "integer"
-                },
-                "object": {
-                  "enum": [
-                    "embedding"
-                  ],
-                  "type": "string"
-                }
-              },
-              "required": [
-                "object",
-                "embedding",
-                "index"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "model": {
-            "type": "string"
-          },
-          "object": {
-            "enum": [
-              "list"
-            ],
-            "type": "string"
-          },
-          "usage": {
-            "properties": {
-              "prompt_tokens": {
-                "type": "integer"
-              },
-              "total_tokens": {
-                "type": "integer"
-              }
-            },
-            "required": [
-              "prompt_tokens",
-              "total_tokens"
-            ],
-            "type": "object"
-          }
-        },
-        "required": [
-          "object",
-          "data",
-          "model",
-          "usage"
         ],
         "type": "object"
       },
@@ -1136,16 +1021,13 @@
             "type": "string"
           },
           "category": {
-            "description": "Browse-facing category; mirrors modality (chat/image/video/embedding).",
+            "description": "Browse-facing category; mirrors modality (chat/image/video).",
             "type": "string"
           },
           "context_length": {
             "type": "integer"
           },
           "created": {
-            "type": "integer"
-          },
-          "embedding_dimensions": {
             "type": "integer"
           },
           "id": {
@@ -1155,8 +1037,7 @@
             "enum": [
               "chat",
               "image",
-              "video",
-              "embedding"
+              "video"
             ],
             "type": "string"
           },
@@ -2160,65 +2041,6 @@
         ]
       }
     },
-    "/embeddings": {
-      "post": {
-        "operationId": "createEmbeddings",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/EmbeddingsRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "$ref": "#/components/responses/OpenAIEmbeddings"
-          },
-          "400": {
-            "$ref": "#/components/responses/OpenAIBadRequest"
-          },
-          "401": {
-            "$ref": "#/components/responses/OpenAIUnauthorized"
-          },
-          "402": {
-            "$ref": "#/components/responses/OpenAIPaymentRequired"
-          },
-          "403": {
-            "$ref": "#/components/responses/OpenAIForbidden"
-          },
-          "404": {
-            "$ref": "#/components/responses/OpenAINotFound"
-          },
-          "422": {
-            "$ref": "#/components/responses/OpenAIUnprocessableEntity"
-          },
-          "429": {
-            "$ref": "#/components/responses/OpenAIRateLimited"
-          },
-          "500": {
-            "$ref": "#/components/responses/OpenAIInternalError"
-          },
-          "503": {
-            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
-          },
-          "504": {
-            "$ref": "#/components/responses/OpenAIUpstreamTimeout"
-          }
-        },
-        "security": [
-          {
-            "bearerAuth": []
-          }
-        ],
-        "summary": "Create embeddings (OpenAI-compatible)",
-        "tags": [
-          "Inference"
-        ]
-      }
-    },
     "/files": {
       "post": {
         "operationId": "createFile",
@@ -2894,8 +2716,7 @@
               "enum": [
                 "chat",
                 "image",
-                "video",
-                "embedding"
+                "video"
               ],
               "type": "string"
             }
