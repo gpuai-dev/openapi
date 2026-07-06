@@ -473,6 +473,125 @@
         ],
         "type": "object"
       },
+      "CommunityMachine": {
+        "description": "A self-declared Community Cloud machine. Spec fields are optional and unverified until Phase 57. The enrollment token hash is never serialized.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "price_per_hour": {
+            "nullable": true,
+            "type": "number"
+          },
+          "region": {
+            "nullable": true,
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending_verification",
+              "listed",
+              "delisted",
+              "suspended"
+            ],
+            "type": "string"
+          },
+          "supplier_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "verification_status": {
+            "enum": [
+              "unverified",
+              "verified",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "vram_per_gpu_gb": {
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "machine_id",
+          "supplier_id",
+          "status",
+          "verification_status",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "CommunityMachineRegistration": {
+        "properties": {
+          "enrollment_token": {
+            "description": "One-time enrollment token — shown exactly once, store securely.",
+            "type": "string"
+          },
+          "machine": {
+            "$ref": "#/components/schemas/CommunityMachine"
+          }
+        },
+        "required": [
+          "machine",
+          "enrollment_token"
+        ],
+        "type": "object"
+      },
+      "CommunitySupplier": {
+        "description": "One organization's Community Cloud supplier profile (ONBD-01).",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "org_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "active",
+              "suspended"
+            ],
+            "type": "string"
+          },
+          "supplier_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_id",
+          "org_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
       "CreateFineTuningJobRequest": {
         "description": "Request body for POST /fine_tuning/jobs. The `method` object carries the Axolotl LoRA/QLoRA hyperparameters; `gpuai` is a native extension for the optional budget cap and GPU preference. The backing training environment (image, GPU provider) is an internal orchestration detail and is intentionally absent from this schema (privacy-by-omission, D6).",
         "properties": {
@@ -1391,6 +1510,35 @@
         ],
         "type": "object"
       },
+      "RegisterCommunityMachineRequest": {
+        "description": "All fields optional; an empty body registers a zero-spec placeholder in pending_verification.",
+        "properties": {
+          "gpu_count": {
+            "maximum": 64,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "price_per_hour": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "number"
+          },
+          "region": {
+            "maxLength": 50,
+            "type": "string"
+          },
+          "vram_per_gpu_gb": {
+            "maximum": 2048,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "SSHKey": {
         "properties": {
           "created_at": {
@@ -2038,6 +2186,154 @@
         "summary": "Create a chat completion (OpenAI-compatible)",
         "tags": [
           "Inference"
+        ]
+      }
+    },
+    "/community/machines": {
+      "post": {
+        "description": "Registers a self-declared machine under the caller's community supplier and mints a one-time enrollment token. All spec fields are optional — an empty body registers a placeholder in `pending_verification`. The `enrollment_token` is shown exactly once and never returned again. Requires the `community` scope (or `full_access`).",
+        "operationId": "registerCommunityMachine",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterCommunityMachineRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityMachineRegistration"
+                }
+              }
+            },
+            "description": "The registered machine plus its one-time enrollment token."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role is suspended."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role has not been enabled yet."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Register a Community Cloud machine",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
+    "/community/suppliers": {
+      "post": {
+        "description": "Idempotently enables the Community Cloud supplier role for the organization the API key belongs to. A repeat call is a no-op that returns the same supplier record (200, not 201). Requires the `community` scope (or `full_access`).",
+        "operationId": "enableCommunitySupplier",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunitySupplier"
+                }
+              }
+            },
+            "description": "The community supplier record (created or already-existing)."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Enable the Community Cloud supplier role",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
+    "/community/suppliers/me": {
+      "get": {
+        "description": "Returns the community supplier record for the organization the API key belongs to, or 404 `not-a-supplier` when the role has not been enabled. Requires the `community` scope (read).",
+        "operationId": "getCommunitySupplierMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunitySupplier"
+                }
+              }
+            },
+            "description": "The community supplier record."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The organization has not enabled the community supplier role."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get the caller's Community Cloud supplier",
+        "tags": [
+          "Community"
         ]
       }
     },
