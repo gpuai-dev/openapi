@@ -1406,6 +1406,10 @@
             "description": "count of available units, summed across merged identical offers",
             "type": "integer"
           },
+          "community": {
+            "description": "true when this offering is community-supplied capacity",
+            "type": "boolean"
+          },
           "gpu_count": {
             "description": "number of GPUs in the listed configuration",
             "type": "integer"
@@ -1440,7 +1444,8 @@
           "tier",
           "price_per_hour",
           "available",
-          "instant_boot"
+          "instant_boot",
+          "community"
         ],
         "type": "object"
       },
