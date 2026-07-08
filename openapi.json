@@ -540,6 +540,26 @@
         ],
         "type": "object"
       },
+      "CommunityMachineDelistResult": {
+        "description": "The terminal status a machine reached after a delist. `draining` means it was occupied and the existing rental keeps running (never killed); `delisted` means it was idle and left supply immediately.",
+        "properties": {
+          "machine_id": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "draining",
+              "delisted"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "machine_id",
+          "status"
+        ],
+        "type": "object"
+      },
       "CommunityMachineRegistration": {
         "properties": {
           "enrollment_token": {
@@ -2256,6 +2276,80 @@
           }
         ],
         "summary": "Register a Community Cloud machine",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
+    "/community/machines/{id}/delist": {
+      "post": {
+        "description": "Removes a machine the caller's org owns from supply (ONBD-04). Drain-not-kill: an occupied machine becomes `draining` (its customer rental keeps running until it ends naturally) and an idle machine becomes `delisted`. The endpoint never force-terminates a running rental. A missing or cross-org machine returns 404 with an indistinguishable body so existence never leaks across orgs. Requires the `community` scope (or `full_access`).",
+        "operationId": "delistCommunityMachine",
+        "parameters": [
+          {
+            "description": "The machine id to delist.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityMachineDelistResult"
+                }
+              }
+            },
+            "description": "The terminal status the machine reached."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role is suspended."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The machine does not exist or is not owned by the caller's org."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role has not been enabled yet."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Delist a Community Cloud machine",
         "tags": [
           "Community"
         ]
