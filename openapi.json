@@ -518,6 +518,14 @@
             "format": "uuid",
             "type": "string"
           },
+          "tier": {
+            "description": "Supplier-chosen rental model. on_demand = guaranteed whole-node capacity; spot = cheaper interruptible capacity. Defaults to on_demand. Becomes the catalog offering's tier.",
+            "enum": [
+              "on_demand",
+              "spot"
+            ],
+            "type": "string"
+          },
           "verification_status": {
             "enum": [
               "unverified",
@@ -1426,6 +1434,15 @@
             "description": "count of available units, summed across merged identical offers",
             "type": "integer"
           },
+          "capacity_class": {
+            "description": "per-offering capacity classification — \"secure\" for datacenter-operated hardware, \"community\" for supplier/peer-hosted hardware with a softer SLA. The string twin of `community`, classified per offering rather than per upstream. May transiently be empty for cache entries written before the field existed.",
+            "enum": [
+              "secure",
+              "community",
+              ""
+            ],
+            "type": "string"
+          },
           "community": {
             "description": "true when this offering is community-supplied capacity",
             "type": "boolean"
@@ -1556,6 +1573,14 @@
             "maxLength": 50,
             "type": "string"
           },
+          "tier": {
+            "description": "Supplier-chosen rental model. Optional; omitted resolves to on_demand. spot lists the machine as cheaper interruptible capacity.",
+            "enum": [
+              "on_demand",
+              "spot"
+            ],
+            "type": "string"
+          },
           "vram_per_gpu_gb": {
             "maximum": 2048,
             "minimum": 1,
@@ -1683,6 +1708,9 @@
           "container_disk_gb": {
             "type": "integer"
           },
+          "description": {
+            "type": "string"
+          },
           "display_name": {
             "type": "string"
           },
@@ -1711,6 +1739,12 @@
           },
           "id": {
             "type": "string"
+          },
+          "includes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "kind": {
             "description": "Deployable kind. \"service\" is a long-running app exposed at connection.app_url. \"finetuning\" is a run-to-completion job (no app_url) and is currently advertised only as a coming-soon catalog entry — not yet deployable.",
