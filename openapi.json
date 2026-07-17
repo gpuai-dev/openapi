@@ -40,6 +40,11 @@
                   "description": "Per-deploy env overrides; only keys the template marks user_overridable are accepted (others 422). Secret values are redacted from operation metadata.",
                   "type": "object"
                 },
+                "environment": {
+                  "description": "Launch environment. Omit for the provider default (the GPU.ai Certified Image where supported). Accepted values: `certified` (the GPU.ai Certified base image), `certified:<framework>` (a framework layer — see GET /v1/environments for the roster, e.g. `certified:pytorch`), `certified:<framework>@<version>` (a specific framework version, e.g. `certified:pytorch@2.13`), `raw_vm` (root VM, provider default OS), `raw_vm:<os>` (root VM with a chosen OS, e.g. `raw_vm:ubuntu-24.04`), or `provider_template` (the provider's own image). A well-formed value the placed machine can't serve returns 422 `environment_unavailable`.",
+                  "example": "certified:pytorch@2.13",
+                  "type": "string"
+                },
                 "gpu_count": {
                   "maximum": 8,
                   "minimum": 1,
@@ -54,6 +59,10 @@
                   "type": "number"
                 },
                 "name": {
+                  "type": "string"
+                },
+                "offering_id": {
+                  "description": "Pin the launch to one exact offering (from GET /v1/pricing) so the engine never substitutes a pricier one. If that offering is gone, the launch fails explicitly rather than silently placing elsewhere.",
                   "type": "string"
                 },
                 "region": {
@@ -685,6 +694,60 @@
         ],
         "type": "object"
       },
+      "Environments": {
+        "description": "The launch environment catalog (GET /v1/environments).",
+        "properties": {
+          "frameworks": {
+            "description": "Certified framework ids whose images are fully published — the `certified:<framework>` options.",
+            "example": [
+              "pytorch",
+              "cuda-devel",
+              "jupyter"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "includes": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "items": {
+                  "$ref": "#/components/schemas/IncludeItem"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            "description": "\"What's included\" software lists: framework id (roster ids plus \"base\") → CUDA variant (\"cuda128\"/\"cuda124\") → components.",
+            "type": "object"
+          },
+          "versions": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/FrameworkVersion"
+              },
+              "type": "array"
+            },
+            "description": "The version picker roster: framework id → selectable versions (the `certified:<framework>@<version>` grammar). A framework absent here has one build per CUDA variant. `variant` is the CUDA variant a version targets — only offerings whose GPU maps to it can run it.",
+            "type": "object"
+          },
+          "vm_images": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/VMImage"
+            },
+            "description": "The raw-VM OS catalog (the `raw_vm:<os>` grammar), keyed by os id.",
+            "type": "object"
+          }
+        },
+        "required": [
+          "frameworks",
+          "versions",
+          "includes",
+          "vm_images"
+        ],
+        "type": "object"
+      },
       "FileObject": {
         "description": "An uploaded file object. The storage location is an internal detail and is intentionally absent from this schema (privacy-by-omission, D6).",
         "properties": {
@@ -932,6 +995,34 @@
         ],
         "type": "object"
       },
+      "FrameworkVersion": {
+        "properties": {
+          "default": {
+            "description": "Preselected in the picker (at most one per framework).",
+            "type": "boolean"
+          },
+          "id": {
+            "description": "The version token used in `certified:<framework>@<id>`.",
+            "example": "2.13",
+            "type": "string"
+          },
+          "label": {
+            "example": "PyTorch 2.13",
+            "type": "string"
+          },
+          "variant": {
+            "description": "CUDA variant this version targets (cuda128/cuda124).",
+            "example": "cuda124",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "variant"
+        ],
+        "type": "object"
+      },
       "GPUType": {
         "properties": {
           "architecture": {
@@ -1042,6 +1133,23 @@
           "created",
           "data",
           "usage"
+        ],
+        "type": "object"
+      },
+      "IncludeItem": {
+        "properties": {
+          "name": {
+            "example": "PyTorch",
+            "type": "string"
+          },
+          "version": {
+            "description": "Resolved build version; absent for unpinned components (e.g. git).",
+            "example": "2.13.0",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -1884,6 +1992,32 @@
         ],
         "type": "object"
       },
+      "VMImage": {
+        "properties": {
+          "driver_preinstalled": {
+            "description": "true when the image ships the NVIDIA driver + CUDA baked in.",
+            "type": "boolean"
+          },
+          "family": {
+            "example": "ubuntu",
+            "type": "string"
+          },
+          "label": {
+            "example": "Ubuntu 24.04 LTS",
+            "type": "string"
+          },
+          "version": {
+            "example": "24.04",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "family",
+          "version"
+        ],
+        "type": "object"
+      },
       "VideoCreateRequest": {
         "properties": {
           "model": {
@@ -2468,6 +2602,28 @@
         "tags": [
           "Community"
         ]
+      }
+    },
+    "/environments": {
+      "get": {
+        "description": "The server-controlled launch environment catalog — the certified framework roster, the selectable version(s) per framework (the version picker), the \"What's included\" software lists, and the raw-VM OS catalog. These are exactly the values accepted by the `environment` field of POST /v1/instances.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Environments"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [],
+        "summary": "List launch environments (no auth required)"
       }
     },
     "/files": {
