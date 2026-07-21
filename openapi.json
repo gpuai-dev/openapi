@@ -1028,8 +1028,20 @@
           "architecture": {
             "type": "string"
           },
+          "cpu_cores": {
+            "description": "Representative host vCPU count for this GPU model. Unlike vram_gb (invariant per model) this varies per offering, so it is the first-sighting/typical value; GET /v1/pricing carries the exact per-offering spec. 0 marks a spec the upstream did not report.",
+            "type": "integer"
+          },
           "gpu_type": {
             "type": "string"
+          },
+          "ram_gb": {
+            "description": "Representative host RAM (GB) for this GPU model; varies per offering — see cpu_cores. 0 marks an unreported spec.",
+            "type": "integer"
+          },
+          "storage_gb": {
+            "description": "Representative host storage (GB) for this GPU model; varies per offering — see cpu_cores. 0 marks an unreported spec.",
+            "type": "integer"
           },
           "vram_gb": {
             "type": "integer"
@@ -1555,6 +1567,10 @@
             "description": "true when this offering is community-supplied capacity",
             "type": "boolean"
           },
+          "cpu_cores": {
+            "description": "host vCPU count for this offering, tied to the shown (cheapest) price. 0 marks an unreported spec.",
+            "type": "integer"
+          },
           "gpu_count": {
             "description": "number of GPUs in the listed configuration",
             "type": "integer"
@@ -1571,8 +1587,16 @@
             "format": "double",
             "type": "number"
           },
+          "ram_gb": {
+            "description": "host RAM (GB) for this offering, tied to the shown price. 0 marks an unreported spec.",
+            "type": "integer"
+          },
           "region": {
             "type": "string"
+          },
+          "storage_gb": {
+            "description": "host storage (GB) for this offering, tied to the shown price. 0 marks an unreported spec.",
+            "type": "integer"
           },
           "tier": {
             "enum": [
