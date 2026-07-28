@@ -33,6 +33,12 @@
           "application/json": {
             "schema": {
               "properties": {
+                "disk_gb": {
+                  "description": "Requested instance filesystem size in GB. Omit for the platform default (100 GB), which never narrows placement. Setting it is a hard requirement: placement narrows to capacity that can honor it (see `disk_configurable` on GET /v1/pricing), and a request no offering of the gpu_type can honor returns 422 `disk_unavailable` rather than launching with a different size. Bounds: at least 10, at most the platform ceiling (currently 250) — outside them returns 422 `validation_failed`.",
+                  "example": 200,
+                  "minimum": 10,
+                  "type": "integer"
+                },
                 "env": {
                   "additionalProperties": {
                     "type": "string"
@@ -1032,8 +1038,16 @@
             "description": "Representative host vCPU count for this GPU model. Unlike vram_gb (invariant per model) this varies per offering, so it is the first-sighting/typical value; GET /v1/pricing carries the exact per-offering spec. 0 marks a spec the upstream did not report.",
             "type": "integer"
           },
+          "disk_configurable": {
+            "description": "true when at least one offering of this model accepts a custom disk_gb at launch (an OR across offerings — requesting disk_gb narrows placement to the capable capacity).",
+            "type": "boolean"
+          },
           "gpu_type": {
             "type": "string"
+          },
+          "instance_disk_gb": {
+            "description": "Representative instance filesystem size (GB) a launch of this model receives — the platform default where the upstream honors a configured size, otherwise the machine's reported disk; varies per offering — see cpu_cores. 0 marks an unreported disk (unknown, not zero). GET /v1/pricing carries the exact per-offering value.",
+            "type": "integer"
           },
           "ram_gb": {
             "description": "Representative host RAM (GB) for this GPU model; varies per offering — see cpu_cores. 0 marks an unreported spec.",
@@ -1189,6 +1203,10 @@
           "created_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "disk_gb": {
+            "description": "Instance filesystem size in GB that the platform configured for this launch. Present only where the placed capacity honors a configured disk size; absent means the machine's disk is provider-determined (its own flavor volume).",
+            "type": "integer"
           },
           "gpu_count": {
             "maximum": 8,
@@ -1571,12 +1589,20 @@
             "description": "host vCPU count for this offering, tied to the shown (cheapest) price. 0 marks an unreported spec.",
             "type": "integer"
           },
+          "disk_configurable": {
+            "description": "true when a launch of this offering may choose its own disk size via the create request's disk_gb. A distinguishing field in the offer merge — configurable and fixed-disk capacity for the same SKU stay separate rows.",
+            "type": "boolean"
+          },
           "gpu_count": {
             "description": "number of GPUs in the listed configuration",
             "type": "integer"
           },
           "gpu_type": {
             "type": "string"
+          },
+          "instance_disk_gb": {
+            "description": "Instance filesystem size (GB) a launch of THIS offering receives — the platform default where the upstream honors a configured size, otherwise the machine's own reported disk; tied to the shown (cheapest) price like cpu_cores. 0 marks an unreported disk (unknown, not zero).",
+            "type": "integer"
           },
           "instant_boot": {
             "description": "true when instances of this offering are typically reachable within about a minute of launch; false for capacity with longer provisioning times (~3-5 minutes)",
@@ -1649,6 +1675,7 @@
               "idempotency_mismatch",
               "validation_failed",
               "invalid_gpu_type",
+              "disk_unavailable",
               "insufficient_balance",
               "quota_exceeded",
               "rate_limited",
