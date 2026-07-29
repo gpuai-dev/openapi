@@ -34,7 +34,7 @@
             "schema": {
               "properties": {
                 "disk_gb": {
-                  "description": "Requested instance filesystem size in GB. Omit for the platform default (100 GB), which never narrows placement. Setting it is a hard requirement: placement narrows to capacity that can honor it (see `disk_configurable` on GET /v1/pricing), and a request no offering of the gpu_type can honor returns 422 `disk_unavailable` rather than launching with a different size. Bounds: at least 10, at most the platform ceiling (currently 250) — outside them returns 422 `validation_failed`.",
+                  "description": "Requested instance filesystem size in GB. Omit for the platform default (100 GB), which never narrows placement. Setting it is a hard requirement: placement narrows to capacity that can honor it (see `disk_configurable` on GET /v1/pricing), and a request no offering of the gpu_type can honor returns 422 `disk_unavailable` rather than launching with a different size. Disk beyond the included allowance (100 GB) is billed at the offering's `disk_price_per_gb_hour` (GET /v1/pricing), folded into the instance's single hourly rate. Bounds: at least 10, at most the platform ceiling (currently 1000) — outside them returns 422 `validation_failed`.",
                   "example": 200,
                   "minimum": 10,
                   "type": "integer"
@@ -697,6 +697,72 @@
           "model",
           "training_file",
           "method"
+        ],
+        "type": "object"
+      },
+      "CryptoDeposit": {
+        "description": "A stablecoin deposit. Mirrors the Go DTO field for field. Like that struct, this schema deliberately has NO payment-processor property — the processor is an implementation detail and is structurally absent from the customer contract, not merely filtered out.\n",
+        "properties": {
+          "amount_usd_cents": {
+            "description": "The amount requested, in USD cents. Never the settled or credited value.",
+            "type": "integer"
+          },
+          "asset": {
+            "enum": [
+              "usdc",
+              "usdt"
+            ],
+            "type": "string"
+          },
+          "chain": {
+            "enum": [
+              "ethereum",
+              "base",
+              "arbitrum",
+              "polygon",
+              "solana"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "credited_cents": {
+            "description": "USD cents actually credited to the balance. Absent until credited.",
+            "type": "integer"
+          },
+          "deposit_id": {
+            "type": "string"
+          },
+          "expires_at": {
+            "description": "RFC3339 UTC. After this, send nothing to pay_address.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "pay_address": {
+            "description": "The address to send funds to. Unique to this deposit.",
+            "type": "string"
+          },
+          "pay_amount": {
+            "description": "The exact token amount to send, as a decimal string (never a number — the value must not round-trip through a float).\n",
+            "type": "string"
+          },
+          "status": {
+            "description": "Lifecycle state: created, detected, confirming, settled, screening, held_screening, credited, credited_underpaid, credited_overpaid, expired, expired_received, failed, failed_screening.\n",
+            "type": "string"
+          },
+          "tx_hash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "status",
+          "chain",
+          "asset",
+          "amount_usd_cents",
+          "created_at"
         ],
         "type": "object"
       },
@@ -1593,6 +1659,11 @@
             "description": "true when a launch of this offering may choose its own disk size via the create request's disk_gb. A distinguishing field in the offer merge — configurable and fixed-disk capacity for the same SKU stay separate rows.",
             "type": "boolean"
           },
+          "disk_price_per_gb_hour": {
+            "description": "Retail price of one GB of instance disk beyond instance_disk_gb, per hour, for launches of this offering. A launch requesting disk_gb above instance_disk_gb is billed approximately price_per_hour + (disk_gb − instance_disk_gb) × disk_price_per_gb_hour (the exact billed rate folds disk into one cent-rounded hourly price). 0 when the offering is not disk-configurable, or when disk above the included allowance is currently free.",
+            "format": "double",
+            "type": "number"
+          },
           "gpu_count": {
             "description": "number of GPUs in the listed configuration",
             "type": "integer"
@@ -2272,6 +2343,184 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/billing/deposits": {
+      "get": {
+        "description": "Returns the organization's stablecoin deposits, newest first, capped at 50. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "deposits": {
+                      "items": {
+                        "$ref": "#/components/schemas/CryptoDeposit"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "deposits"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List stablecoin deposits"
+      }
+    },
+    "/billing/deposits/crypto": {
+      "post": {
+        "description": "Creates a deposit intent and returns the payment address and the exact token amount to send. Requires the `billing:write` scope; any member of the organization may add funds. Send the exact `pay_amount` of `asset` on `chain` and no other network — funds sent on a different network are not detected automatically. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "amount_cents": {
+                    "description": "Amount to deposit in USD cents. Must be at least the configured minimum (500 = $5.00 by default).\n",
+                    "type": "integer"
+                  },
+                  "asset": {
+                    "enum": [
+                      "usdc",
+                      "usdt"
+                    ],
+                    "type": "string"
+                  },
+                  "chain": {
+                    "enum": [
+                      "ethereum",
+                      "base",
+                      "arbitrum",
+                      "polygon",
+                      "solana"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "amount_cents",
+                  "chain",
+                  "asset"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CryptoDeposit"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`validation-error` — `amount_cents` is below the configured minimum. `unsupported-chain-asset` — the chain/asset pair is not available. `invalid-request` — malformed JSON body.\n"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`org-frozen` — the organization cannot add funds; contact support."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`payment-source-unavailable` — deposits are temporarily unavailable; retry shortly."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a stablecoin deposit"
+      }
+    },
+    "/billing/deposits/{id}": {
+      "get": {
+        "description": "Returns a single deposit belonging to the caller's organization. Requires the `billing:read` scope. A deposit belonging to another organization returns the same `404 deposit-not-found` as one that does not exist — deliberately, so this endpoint cannot be used to test whether a deposit id is real. Also 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CryptoDeposit"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`deposit-not-found` — no such deposit, or it belongs to another organization. `not-found` — the feature is not enabled.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get one stablecoin deposit"
+      },
+      "parameters": [
+        {
+          "description": "The deposit id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
     "/billing/spending-limit": {
       "get": {
         "description": "Returns the organization's monthly spending limit and opt-in daily spend cap, with the current month and day spend. Requires the `billing:read` scope. Returns 404 when no limit is configured.\n",
