@@ -1250,8 +1250,16 @@
           "connection": {
             "nullable": true,
             "properties": {
+              "app_password": {
+                "description": "HTTP Basic Auth password for app_url. Same availability as app_user. Treat as a secret.",
+                "type": "string"
+              },
               "app_url": {
                 "description": "HTTPS URL of the deployed application (template instances only), e.g. https://gpu-abcd1234.apps.gpu.ai.",
+                "type": "string"
+              },
+              "app_user": {
+                "description": "HTTP Basic Auth username for app_url. Present on template instances deployed after the credential-persistence change; older deploys omit it (their credential was only surfaced once at deploy time).",
                 "type": "string"
               },
               "hostname": {
