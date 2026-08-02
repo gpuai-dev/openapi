@@ -488,6 +488,67 @@
         ],
         "type": "object"
       },
+      "CommunityEarnings": {
+        "properties": {
+          "accrued_cents": {
+            "description": "Lifetime accrued earnings in cents.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/CommunityEarningsEntry"
+            },
+            "type": "array"
+          },
+          "unpaid_cents": {
+            "description": "Accrued but not yet paid out, in cents.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "accrued_cents",
+          "unpaid_cents",
+          "entries"
+        ],
+        "type": "object"
+      },
+      "CommunityEarningsEntry": {
+        "properties": {
+          "accrued_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "amount_cents": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "instance_id": {
+            "type": "string"
+          },
+          "ledger_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "machine_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "paid": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ledger_id",
+          "machine_id",
+          "instance_id",
+          "amount_cents",
+          "accrued_at",
+          "paid"
+        ],
+        "type": "object"
+      },
       "CommunityMachine": {
         "description": "A self-declared Community Cloud machine. Spec fields are optional and unverified until Phase 57. The enrollment token hash is never serialized.",
         "properties": {
@@ -1937,6 +1998,110 @@
         },
         "type": "object"
       },
+      "SupplierMachineView": {
+        "description": "The supplier-facing projection of a community machine. `occupied` replaces the renting customer's instance id (never exposed to the supplier); `online` is the server-derived 60s-heartbeat liveness.",
+        "properties": {
+          "agent_version": {
+            "nullable": true,
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "delist_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "first_heartbeat_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "gpu_count": {
+            "nullable": true,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "nullable": true,
+            "type": "string"
+          },
+          "last_heartbeat_at": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
+          "machine_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "occupied": {
+            "description": "A customer instance is currently renting this machine.",
+            "type": "boolean"
+          },
+          "online": {
+            "description": "Server-derived — heartbeated within the last 60 seconds.",
+            "type": "boolean"
+          },
+          "price_per_hour": {
+            "description": "Whole-machine hourly rate (never per-GPU).",
+            "nullable": true,
+            "type": "number"
+          },
+          "region": {
+            "nullable": true,
+            "type": "string"
+          },
+          "reliability_score": {
+            "description": "Server-computed 0–100; machines below the platform threshold are auto-delisted.",
+            "nullable": true,
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "pending_verification",
+              "listed",
+              "delisted",
+              "suspended",
+              "draining"
+            ],
+            "type": "string"
+          },
+          "suspend_reason": {
+            "nullable": true,
+            "type": "string"
+          },
+          "tier": {
+            "enum": [
+              "on_demand",
+              "spot"
+            ],
+            "type": "string"
+          },
+          "verification_status": {
+            "enum": [
+              "unverified",
+              "verified",
+              "failed"
+            ],
+            "type": "string"
+          },
+          "vram_per_gpu_gb": {
+            "nullable": true,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "machine_id",
+          "tier",
+          "status",
+          "verification_status",
+          "online",
+          "occupied",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "Template": {
         "description": "A deployable application template. The container image (registry path) and start command are internal orchestration details and are intentionally absent from this schema (TMPL-13 defense-by-omission).",
         "properties": {
@@ -2053,6 +2218,20 @@
         "required": [
           "object",
           "data"
+        ],
+        "type": "object"
+      },
+      "UpdateCommunityMachineRequest": {
+        "properties": {
+          "price_per_hour": {
+            "description": "Whole-machine hourly rate (never per-GPU). Must clear the platform floor; a below-floor price is rejected with `price-below-floor` carrying the concrete `floor_per_hour`.",
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "price_per_hour"
         ],
         "type": "object"
       },
@@ -2690,7 +2869,114 @@
         ]
       }
     },
+    "/community/earnings": {
+      "get": {
+        "description": "Returns the caller org's supplier earnings — lifetime accrued and unpaid totals in cents plus recent ledger entries, newest first. An optional `limit` caps the ledger rows (server-clamped). Requires the `community` scope (read).",
+        "operationId": "getCommunityEarnings",
+        "parameters": [
+          {
+            "description": "Maximum ledger entries to return (default 100, max 500).",
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "maximum": 500,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityEarnings"
+                }
+              }
+            },
+            "description": "The earnings view."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The organization has not enabled the community supplier role."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get your Community Cloud earnings",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
     "/community/machines": {
+      "get": {
+        "description": "Returns every machine the caller's org has registered, newest first, as supplier-facing views (`occupied`/`online` projections — the renting customer's instance id is never exposed). Requires the `community` scope (read).",
+        "operationId": "listCommunityMachines",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "machines": {
+                      "items": {
+                        "$ref": "#/components/schemas/SupplierMachineView"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "machines"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The caller's machines."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The organization has not enabled the community supplier role."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "List your Community Cloud machines",
+        "tags": [
+          "Community"
+        ]
+      },
       "post": {
         "description": "Registers a self-declared machine under the caller's community supplier and mints a one-time enrollment token. All spec fields are optional — an empty body registers a placeholder in `pending_verification`. The `enrollment_token` is shown exactly once and never returned again. Requires the `community` scope (or `full_access`).",
         "operationId": "registerCommunityMachine",
@@ -2752,6 +3038,142 @@
           }
         ],
         "summary": "Register a Community Cloud machine",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
+    "/community/machines/{id}": {
+      "get": {
+        "description": "Returns one machine the caller's org owns, as a supplier-facing view (`occupied`/`online` projections — the renting customer's instance id is never exposed). A missing or cross-org machine returns 404 with an indistinguishable body. Requires the `community` scope (read).",
+        "operationId": "getCommunityMachine",
+        "parameters": [
+          {
+            "description": "The machine id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierMachineView"
+                }
+              }
+            },
+            "description": "The supplier-facing machine view."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The machine does not exist or is not owned by the caller's org."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Get one of your Community Cloud machines",
+        "tags": [
+          "Community"
+        ]
+      },
+      "patch": {
+        "description": "Sets the machine's hourly price. `price_per_hour` is the WHOLE-MACHINE rate (never per-GPU). Prices below the platform floor are rejected with a `price-below-floor` problem carrying the concrete `floor_per_hour` extension member. A price change never affects an in-flight rental (its rate was snapshotted at provision); the catalog reprices on the next poll. Requires the `community` scope (or `full_access`).",
+        "operationId": "updateCommunityMachine",
+        "parameters": [
+          {
+            "description": "The machine id.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCommunityMachineRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupplierMachineView"
+                }
+              }
+            },
+            "description": "The updated supplier-facing machine view."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failure, including `price-below-floor` (the problem doc then carries `floor_per_hour`)."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role is suspended."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The machine does not exist or is not owned by the caller's org."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Update a Community Cloud machine's price",
         "tags": [
           "Community"
         ]
@@ -2826,6 +3248,80 @@
           }
         ],
         "summary": "Delist a Community Cloud machine",
+        "tags": [
+          "Community"
+        ]
+      }
+    },
+    "/community/machines/{id}/reclaim": {
+      "post": {
+        "description": "The spot interruption mechanic — the supplier takes back a machine they listed as interruptible (tier=spot). Drain-not-kill: an occupied machine becomes `draining` (the renter gets the grace window, surfaced to the spot router as a preemption warning) and an idle machine becomes `delisted`. An on-demand machine cannot be reclaimed (409 `machine-not-spot`) — use delist instead. Requires the `community` scope (or `full_access`).",
+        "operationId": "reclaimCommunityMachine",
+        "parameters": [
+          {
+            "description": "The machine id to reclaim.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommunityMachineDelistResult"
+                }
+              }
+            },
+            "description": "The status the machine reached."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The community supplier role is suspended."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The machine does not exist or is not owned by the caller's org."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The supplier role has not been enabled, or the machine is on-demand capacity (`machine-not-spot`)."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Reclaim a spot-tier Community Cloud machine",
         "tags": [
           "Community"
         ]
