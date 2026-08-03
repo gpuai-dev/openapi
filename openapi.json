@@ -81,7 +81,7 @@
                   "type": "array"
                 },
                 "template_id": {
-                  "description": "Deploy a curated application template (e.g. comfyui, vllm). When set, gpu_type may be omitted — the cheapest eligible GPU is auto-selected.",
+                  "description": "Deploy a curated application template (e.g. comfyui, vllm). When set, gpu_type may be omitted — the cheapest eligible GPU is auto-selected. For templates serving a Hugging Face model via env.MODEL (vllm, sglang), the model's published weights size is checked against the GPU's VRAM at submit time: an oversized model on an explicit gpu_type returns 422 `model_too_large` (auto-select instead raises its VRAM floor to the estimate, and 422s only when no available GPU fits). Gated/private/unknown repos are never blocked — the deploy proceeds and the 202 carries a `warnings` entry.",
                   "type": "string"
                 },
                 "tier": {
@@ -1312,7 +1312,7 @@
             "nullable": true,
             "properties": {
               "app_password": {
-                "description": "HTTP Basic Auth password for app_url. Same availability as app_user. Treat as a secret.",
+                "description": "HTTP Basic Auth password for app_url and terminal_url. Same availability as app_user. Treat as a secret.",
                 "type": "string"
               },
               "app_url": {
@@ -1320,7 +1320,7 @@
                 "type": "string"
               },
               "app_user": {
-                "description": "HTTP Basic Auth username for app_url. Present on template instances deployed after the credential-persistence change; older deploys omit it (their credential was only surfaced once at deploy time).",
+                "description": "HTTP Basic Auth username for app_url and terminal_url. Present on instances provisioned after the credential-persistence change; older deploys omit it (their credential was only surfaced once at deploy time).",
                 "type": "string"
               },
               "hostname": {
@@ -1330,6 +1330,10 @@
                 "type": "integer"
               },
               "ssh_command": {
+                "type": "string"
+              },
+              "terminal_url": {
+                "description": "HTTPS URL of the browser web console (a shell on the instance, no SSH key required), e.g. https://gpu-abcd1234-term.apps.gpu.ai. Guarded by the same app_user/app_password login. Present only on running instances provisioned with the console.",
                 "type": "string"
               }
             },
@@ -1664,7 +1668,7 @@
             "type": "string"
           },
           "result": {
-            "description": "Terminal-success payload. For template deploys this carries the one-time app credential — returned by GET /operations/{id} exactly once; never on GET /instances/{id}.",
+            "description": "Terminal-success payload. Carries the per-instance web-access credential — app_url for template deploys, terminal_url for instances provisioned with the browser web console, and the shared basic-auth login for both. The credential is also re-readable via connection.app_user/app_password on the org-scoped instance reads.",
             "properties": {
               "app_basic_auth_pass": {
                 "type": "string"
@@ -1673,6 +1677,9 @@
                 "type": "string"
               },
               "app_url": {
+                "type": "string"
+              },
+              "terminal_url": {
                 "type": "string"
               }
             },
@@ -1691,6 +1698,13 @@
           "updated_at": {
             "format": "date-time",
             "type": "string"
+          },
+          "warnings": {
+            "description": "Create-time advisories, present only on the synchronous 202 from POST /instances (never on GET /operations/{id} polls) — e.g. the model-size guard failing open because a template deploy's MODEL is a gated or unknown Hugging Face repo whose size could not be verified.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           }
         },
         "required": [
@@ -1816,6 +1830,7 @@
               "validation_failed",
               "invalid_gpu_type",
               "disk_unavailable",
+              "model_too_large",
               "insufficient_balance",
               "quota_exceeded",
               "rate_limited",
