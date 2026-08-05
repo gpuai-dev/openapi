@@ -1203,8 +1203,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1422,8 +1424,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1807,8 +1811,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -1936,8 +1942,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2306,8 +2314,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2515,8 +2525,10 @@
             "type": "array"
           },
           "next_cursor": {
-            "nullable": true,
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -2548,6 +2560,7 @@
     "/billing/deposits": {
       "get": {
         "description": "Returns the organization's stablecoin deposits, newest first, capped at 50. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "operationId": "listDeposits",
         "responses": {
           "200": {
             "content": {
@@ -2580,12 +2593,16 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "List stablecoin deposits"
+        "summary": "List stablecoin deposits",
+        "tags": [
+          "Billing"
+        ]
       }
     },
     "/billing/deposits/crypto": {
       "post": {
         "description": "Creates a deposit intent and returns the payment address and the exact token amount to send. Requires the `billing:write` scope; any member of the organization may add funds. Send the exact `pay_amount` of `asset` on `chain` and no other network — funds sent on a different network are not detected automatically. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "operationId": "createCryptoDeposit",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2675,12 +2692,16 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Create a stablecoin deposit"
+        "summary": "Create a stablecoin deposit",
+        "tags": [
+          "Billing"
+        ]
       }
     },
     "/billing/deposits/{id}": {
       "get": {
         "description": "Returns a single deposit belonging to the caller's organization. Requires the `billing:read` scope. A deposit belonging to another organization returns the same `404 deposit-not-found` as one that does not exist — deliberately, so this endpoint cannot be used to test whether a deposit id is real. Also 404 when stablecoin deposits are not enabled for this deployment.\n",
+        "operationId": "getDeposit",
         "responses": {
           "200": {
             "content": {
@@ -2709,7 +2730,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get one stablecoin deposit"
+        "summary": "Get one stablecoin deposit",
+        "tags": [
+          "Billing"
+        ]
       },
       "parameters": [
         {
@@ -2726,6 +2750,7 @@
     "/billing/spending-limit": {
       "get": {
         "description": "Returns the organization's monthly spending limit and opt-in daily spend cap, with the current month and day spend. Requires the `billing:read` scope. Returns 404 when no limit is configured.\n",
+        "operationId": "getSpendingLimit",
         "responses": {
           "200": {
             "content": {
@@ -2747,10 +2772,14 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get the org spending limit"
+        "summary": "Get the org spending limit",
+        "tags": [
+          "Billing"
+        ]
       },
       "put": {
         "description": "Sets the monthly spending limit and optionally sets or clears the opt-in daily spend cap. Requires the `billing:write` scope AND org-admin privileges (a non-admin member gets 403). `daily_limit_dollars` uses pointer semantics: omit to leave the cap unchanged, 0 to clear it, a positive value to set it.\n",
+        "operationId": "updateSpendingLimit",
         "requestBody": {
           "content": {
             "application/json": {
@@ -2811,7 +2840,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Set the org spending limit"
+        "summary": "Set the org spending limit",
+        "tags": [
+          "Billing"
+        ]
       }
     },
     "/chat/completions": {
@@ -3426,6 +3458,7 @@
     "/environments": {
       "get": {
         "description": "The server-controlled launch environment catalog — the certified framework roster, the selectable version(s) per framework (the version picker), the \"What's included\" software lists, and the raw-VM OS catalog. These are exactly the values accepted by the `environment` field of POST /v1/instances.",
+        "operationId": "getEnvironments",
         "responses": {
           "200": {
             "content": {
@@ -3442,7 +3475,10 @@
           }
         },
         "security": [],
-        "summary": "List launch environments (no auth required)"
+        "summary": "List launch environments (no auth required)",
+        "tags": [
+          "Environments"
+        ]
       }
     },
     "/files": {
@@ -3792,6 +3828,7 @@
     },
     "/gpu-types": {
       "get": {
+        "operationId": "listGpuTypes",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
@@ -3809,11 +3846,15 @@
           }
         },
         "security": [],
-        "summary": "List available GPU types (no auth required)"
+        "summary": "List available GPU types (no auth required)",
+        "tags": [
+          "GpuTypes"
+        ]
       }
     },
     "/health": {
       "get": {
+        "operationId": "getHealth",
         "responses": {
           "200": {
             "content": {
@@ -3833,7 +3874,10 @@
           }
         },
         "security": [],
-        "summary": "Liveness probe"
+        "summary": "Liveness probe",
+        "tags": [
+          "Meta"
+        ]
       }
     },
     "/images/generations": {
@@ -3904,6 +3948,7 @@
     "/instances": {
       "get": {
         "description": "Lists the organization's instances. By default terminated instances are excluded; pass status=terminated for the history or status=all for everything.",
+        "operationId": "listInstances",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
@@ -3941,9 +3986,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "List instances"
+        "summary": "List instances",
+        "tags": [
+          "Instances"
+        ]
       },
       "post": {
+        "operationId": "createInstance",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -3978,12 +4027,16 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Create an instance (async — returns 202 + Operation-Id header)"
+        "summary": "Create an instance (async — returns 202 + Operation-Id header)",
+        "tags": [
+          "Instances"
+        ]
       }
     },
     "/instances/{id}": {
       "delete": {
         "description": "Members can terminate only instances they created; organization admins can terminate any instance in the organization.",
+        "operationId": "deleteInstance",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -4034,9 +4087,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Terminate an instance (idempotent)"
+        "summary": "Terminate an instance (idempotent)",
+        "tags": [
+          "Instances"
+        ]
       },
       "get": {
+        "operationId": "getInstance",
         "responses": {
           "200": {
             "content": {
@@ -4055,7 +4112,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get an instance"
+        "summary": "Get an instance",
+        "tags": [
+          "Instances"
+        ]
       },
       "parameters": [
         {
@@ -4068,6 +4128,7 @@
         }
       ],
       "patch": {
+        "operationId": "updateInstance",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -4085,7 +4146,8 @@
                 "type": "object"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "200": {
@@ -4105,7 +4167,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Update an instance (rename only in v1)"
+        "summary": "Update an instance (rename only in v1)",
+        "tags": [
+          "Instances"
+        ]
       }
     },
     "/models": {
@@ -4197,6 +4262,7 @@
     },
     "/openapi.json": {
       "get": {
+        "operationId": "getOpenApiSpec",
         "responses": {
           "200": {
             "content": {
@@ -4210,11 +4276,15 @@
           }
         },
         "security": [],
-        "summary": "OpenAPI 3.1 specification"
+        "summary": "OpenAPI 3.1 specification",
+        "tags": [
+          "Meta"
+        ]
       }
     },
     "/operations/{id}": {
       "get": {
+        "operationId": "getOperation",
         "parameters": [
           {
             "in": "path",
@@ -4244,12 +4314,16 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get an async operation status"
+        "summary": "Get an async operation status",
+        "tags": [
+          "Operations"
+        ]
       }
     },
     "/pricing": {
       "get": {
         "description": "Lists every distinct offer (gpu_type, gpu_count, region, tier, price, boot class). Customer-identical offers are merged with availability summed. Offers with zero availability are omitted unless include_unavailable=true.",
+        "operationId": "listPricing",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
@@ -4304,12 +4378,16 @@
           }
         },
         "security": [],
-        "summary": "List pricing per GPU type + region (no auth required)"
+        "summary": "List pricing per GPU type + region (no auth required)",
+        "tags": [
+          "Pricing"
+        ]
       }
     },
     "/ssh-keys": {
       "get": {
         "description": "Returns the SSH keys owned by the user the API key was minted by. Org-wide key visibility is an admin capability in the dashboard.",
+        "operationId": "listSshKeys",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
@@ -4329,9 +4407,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "List SSH keys"
+        "summary": "List SSH keys",
+        "tags": [
+          "SshKeys"
+        ]
       },
       "post": {
+        "operationId": "createSshKey",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -4356,7 +4438,8 @@
                 "type": "object"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -4376,11 +4459,15 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Create an SSH key"
+        "summary": "Create an SSH key",
+        "tags": [
+          "SshKeys"
+        ]
       }
     },
     "/ssh-keys/{id}": {
       "delete": {
+        "operationId": "deleteSshKey",
         "responses": {
           "204": {
             "description": "Deleted"
@@ -4402,9 +4489,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Delete an SSH key (idempotent — 404 on already-gone per D-07)"
+        "summary": "Delete an SSH key (idempotent — 404 on already-gone per D-07)",
+        "tags": [
+          "SshKeys"
+        ]
       },
       "get": {
+        "operationId": "getSshKey",
         "responses": {
           "200": {
             "content": {
@@ -4423,7 +4514,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get an SSH key"
+        "summary": "Get an SSH key",
+        "tags": [
+          "SshKeys"
+        ]
       },
       "parameters": [
         {
@@ -4515,6 +4609,7 @@
     },
     "/usage": {
       "get": {
+        "operationId": "listUsage",
         "parameters": [
           {
             "in": "query",
@@ -4574,7 +4669,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Time-bucketed usage"
+        "summary": "Time-bucketed usage",
+        "tags": [
+          "Usage"
+        ]
       }
     },
     "/videos": {
@@ -4819,6 +4917,7 @@
     },
     "/webhook-endpoints": {
       "get": {
+        "operationId": "listWebhookEndpoints",
         "parameters": [
           {
             "$ref": "#/components/parameters/CursorParam"
@@ -4838,9 +4937,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "List webhook endpoints"
+        "summary": "List webhook endpoints",
+        "tags": [
+          "Webhooks"
+        ]
       },
       "post": {
+        "operationId": "createWebhookEndpoint",
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
@@ -4875,7 +4978,8 @@
                 "type": "object"
               }
             }
-          }
+          },
+          "required": true
         },
         "responses": {
           "201": {
@@ -4895,11 +4999,15 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Create a webhook endpoint"
+        "summary": "Create a webhook endpoint",
+        "tags": [
+          "Webhooks"
+        ]
       }
     },
     "/webhook-endpoints/{id}": {
       "delete": {
+        "operationId": "deleteWebhookEndpoint",
         "responses": {
           "204": {
             "description": "Deleted"
@@ -4911,9 +5019,13 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Delete a webhook endpoint"
+        "summary": "Delete a webhook endpoint",
+        "tags": [
+          "Webhooks"
+        ]
       },
       "get": {
+        "operationId": "getWebhookEndpoint",
         "responses": {
           "200": {
             "content": {
@@ -4932,7 +5044,10 @@
             "$ref": "#/components/responses/Problem"
           }
         },
-        "summary": "Get a webhook endpoint"
+        "summary": "Get a webhook endpoint",
+        "tags": [
+          "Webhooks"
+        ]
       },
       "parameters": [
         {
@@ -4960,6 +5075,64 @@
     {
       "description": "Demo",
       "url": "https://api.demo.gpu.ai/v1"
+    }
+  ],
+  "tags": [
+    {
+      "description": "OpenAI-compatible inference: chat completions, image generation, video generation, and the model catalog.",
+      "name": "Inference"
+    },
+    {
+      "description": "Reusable launch templates that capture an instance configuration for one-call launches.",
+      "name": "Templates"
+    },
+    {
+      "description": "OpenAI-compatible fine-tuning: create and manage fine-tuning jobs and upload JSONL training files.",
+      "name": "FineTuning"
+    },
+    {
+      "description": "Community Cloud supplier program: enroll as a supplier, register and manage your machines, and track your earnings.",
+      "name": "Community"
+    },
+    {
+      "description": "Service metadata: the liveness probe and the machine-readable OpenAPI specification. No authentication required.",
+      "name": "Meta"
+    },
+    {
+      "description": "The GPU hardware catalog — every GPU type available on the platform. No authentication required.",
+      "name": "GpuTypes"
+    },
+    {
+      "description": "Live pricing offers per GPU type, GPU count, region, and tier, with current availability. No authentication required.",
+      "name": "Pricing"
+    },
+    {
+      "description": "The launch environment catalog: certified frameworks, selectable versions, \"What's included\" software lists, and the raw-VM OS images accepted by instance launch. No authentication required.",
+      "name": "Environments"
+    },
+    {
+      "description": "GPU instances: launch, list, inspect, update, and terminate. Mutating calls return an async operation to poll for completion.",
+      "name": "Instances"
+    },
+    {
+      "description": "Async operation tracking. Instance launches and terminations return an operation id; poll it here until the operation reaches a terminal state.",
+      "name": "Operations"
+    },
+    {
+      "description": "SSH public keys registered with your organization for instance access.",
+      "name": "SshKeys"
+    },
+    {
+      "description": "Webhook endpoints for event delivery. The signing secret is returned once at creation; verify every delivery against it.",
+      "name": "Webhooks"
+    },
+    {
+      "description": "Time-bucketed usage aggregates for your organization, optionally grouped by instance or GPU type.",
+      "name": "Usage"
+    },
+    {
+      "description": "Billing controls and funding: the organization spending limit and stablecoin deposits.",
+      "name": "Billing"
     }
   ]
 }
