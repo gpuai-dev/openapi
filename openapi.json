@@ -1390,6 +1390,10 @@
             ],
             "type": "string"
           },
+          "status_reason": {
+            "description": "Why the instance is in the error state, e.g. \"provisioning stalled: the instance started but never became reachable\". Present only on errored instances.",
+            "type": "string"
+          },
           "terminated_at": {
             "format": "date-time",
             "nullable": true,
