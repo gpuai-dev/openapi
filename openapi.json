@@ -2556,6 +2556,10 @@
       "name": "GPU.ai Support"
     },
     "description": "Programmatic API for GPU.ai. Authenticate with API keys minted from\nthe dashboard. See https://gpu.ai/docs for details.\n",
+    "license": {
+      "identifier": "Apache-2.0",
+      "name": "Apache-2.0"
+    },
     "title": "GPU.ai Public Developer API",
     "version": "1.0.0"
   },
