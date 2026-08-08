@@ -2492,7 +2492,9 @@
                 "instance.creating",
                 "instance.running",
                 "instance.terminated",
-                "instance.failed"
+                "instance.failed",
+                "video.completed",
+                "video.failed"
               ],
               "type": "string"
             },
@@ -4968,7 +4970,9 @@
                         "instance.creating",
                         "instance.running",
                         "instance.terminated",
-                        "instance.failed"
+                        "instance.failed",
+                        "video.completed",
+                        "video.failed"
                       ],
                       "type": "string"
                     },
