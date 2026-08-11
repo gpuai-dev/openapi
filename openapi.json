@@ -2582,10 +2582,17 @@
                         "$ref": "#/components/schemas/CryptoDeposit"
                       },
                       "type": "array"
+                    },
+                    "min_deposit_cents": {
+                      "description": "The effective minimum deposit in USD cents (admin override, else the deployment's configured floor). Validate amounts against this live value rather than hardcoding the default.",
+                      "example": 500,
+                      "format": "int64",
+                      "type": "integer"
                     }
                   },
                   "required": [
-                    "deposits"
+                    "deposits",
+                    "min_deposit_cents"
                   ],
                   "type": "object"
                 }
