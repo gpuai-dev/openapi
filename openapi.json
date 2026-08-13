@@ -1162,7 +1162,7 @@
             "type": "string"
           },
           "cpu_cores": {
-            "description": "Representative host vCPU count for this GPU model. Unlike vram_gb (invariant per model) this varies per offering, so it is the first-sighting/typical value; GET /v1/pricing carries the exact per-offering spec. 0 marks a spec the upstream did not report.",
+            "description": "Representative host vCPU count for this GPU model. Unlike vram_gb (the minimum across the model's current offerings — the value every launch of the model can honor) this varies per offering, so it is the first-sighting/typical value; GET /v1/pricing carries the exact per-offering spec. 0 marks a spec the upstream did not report.",
             "type": "integer"
           },
           "disk_configurable": {
