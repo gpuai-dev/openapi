@@ -1848,6 +1848,7 @@
               "disk_unavailable",
               "disk_exceeds_offering",
               "model_too_large",
+              "price_changed",
               "insufficient_balance",
               "quota_exceeded",
               "rate_limited",
