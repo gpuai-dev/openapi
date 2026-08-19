@@ -1314,7 +1314,7 @@
             "nullable": true,
             "properties": {
               "app_password": {
-                "description": "HTTP Basic Auth password for app_url and terminal_url. Same availability as app_user. Treat as a secret.",
+                "description": "HTTP Basic Auth password for app_url and terminal_url. Treat as a secret. OMITTED by default from all reads — returned only on GET /instances/{id}?include=credentials (same persistence availability as app_user); the list endpoint and operation results never include it.",
                 "type": "string"
               },
               "app_url": {
@@ -1682,11 +1682,8 @@
             "type": "string"
           },
           "result": {
-            "description": "Terminal-success payload. Carries the per-instance web-access credential — app_url for template deploys, terminal_url for instances provisioned with the browser web console, and the shared basic-auth login for both. The credential is also re-readable via connection.app_user/app_password on the org-scoped instance reads.",
+            "description": "Terminal-success payload. Carries the per-instance web-access coordinates — app_url for template deploys, terminal_url for instances provisioned with the browser web console, and the basic-auth username shared by both. The basic-auth PASSWORD is never included here — retrieve it via GET /instances/{id}?include=credentials (connection.app_password).",
             "properties": {
-              "app_basic_auth_pass": {
-                "type": "string"
-              },
               "app_basic_auth_user": {
                 "type": "string"
               },
@@ -2622,8 +2619,7 @@
         "tags": [
           "Billing"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/billing/deposits/crypto": {
       "post": {
@@ -2722,8 +2718,7 @@
         "tags": [
           "Billing"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/billing/deposits/{id}": {
       "get": {
@@ -2772,8 +2767,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/billing/spending-limit": {
       "get": {
@@ -2997,7 +2991,8 @@
         "tags": [
           "Community"
         ]
-      }
+      },
+      "x-dark-launch": true
     },
     "/community/machines": {
       "get": {
@@ -3252,7 +3247,8 @@
         "tags": [
           "Community"
         ]
-      }
+      },
+      "x-dark-launch": true
     },
     "/community/machines/{id}/delist": {
       "post": {
@@ -4122,6 +4118,20 @@
       },
       "get": {
         "operationId": "getInstance",
+        "parameters": [
+          {
+            "description": "Opt-in expansion. `credentials` restores connection.app_password on this single-instance read — the only surface that returns the web-console basic-auth password. Omitted by default so bare reads can be logged without leaking the secret. Any other value is a 400 validation_failed. The list endpoint and operation reads never return the password, with or without this parameter.",
+            "in": "query",
+            "name": "include",
+            "required": false,
+            "schema": {
+              "enum": [
+                "credentials"
+              ],
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
