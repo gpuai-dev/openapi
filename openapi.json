@@ -81,7 +81,7 @@
                   "type": "array"
                 },
                 "template_id": {
-                  "description": "Deploy a curated application template (e.g. comfyui, vllm). When set, gpu_type may be omitted — the cheapest eligible GPU is auto-selected. For templates serving a Hugging Face model via env.MODEL (vllm, sglang), the model's published weights size is checked against the GPU's VRAM at submit time: an oversized model on an explicit gpu_type returns 422 `model_too_large` (auto-select instead raises its VRAM floor to the estimate, and 422s only when no available GPU fits). Gated/private/unknown repos are never blocked — the deploy proceeds and the 202 carries a `warnings` entry.",
+                  "description": "Deploy a curated application template (e.g. comfyui, vllm). When set, gpu_type may be omitted — the cheapest eligible GPU is auto-selected. For templates serving a Hugging Face model via env.MODEL (vllm, sglang), the model's published weights size is checked against the GPU's VRAM at submit time: an oversized model on an explicit gpu_type returns 422 `model_too_large` (auto-select instead raises its VRAM floor to the estimate, and 422s only when no available GPU fits). Gated/private/unknown repos are never blocked — the deploy proceeds and the 202 carries a `warnings` entry. Separately, an explicit gpu_type whose VRAM is below the template's own `min_vram_gb` returns 422 `gpu_vram_too_small`, naming the floor, the type's VRAM and the compatible GPU types. Auto-select is unaffected — it already filters by the floor.",
                   "type": "string"
                 },
                 "tier": {
@@ -90,6 +90,11 @@
                     "on_demand"
                   ],
                   "type": "string"
+                },
+                "viewed_price_per_hour": {
+                  "description": "The retail $/hr the caller displayed to the user before launch. A catalog row is a quote, not a booking, and pinning an offering fixes which machine is placed but not its rate. If the launch-time price exceeds this by more than $0.01 the launch fails with `price_changed` carrying the new price instead of proceeding at the higher price; omit to accept the launch-time price (previous behavior). Refusal only — it is never read as consent, so it can neither raise what you are charged nor widen what may be bought on your behalf. Use max_price_per_hour to bound spend.",
+                  "format": "double",
+                  "type": "number"
                 }
               },
               "required": [
@@ -1384,7 +1389,7 @@
             "type": "string"
           },
           "status": {
-            "description": "Customer-facing lifecycle status. \"allocating\" = the GPU is still being acquired from the provider (slow-boot capacity such as baremetal can take ~15 min); \"starting\" = the node exists and is booting; \"running\" = ready to use.",
+            "description": "Customer-facing lifecycle status. \"allocating\" = the GPU is still being acquired from the provider (slow-boot capacity such as baremetal can take ~15 min); \"starting\" = the node exists and is booting; \"running\" = ready to use. \"unreachable\" = the platform's tunnel probe has confirmed the SSH path is down while the machine may still be up: the instance is NOT usable right now, billing for the confirmed-dead window is auto-credited back, and the instance either recovers to \"running\" on its own or is failed after a grace window. It is a degraded reading of a running instance, not a separate lifecycle state — see unreachable_since.",
             "enum": [
               "allocating",
               "starting",
@@ -1392,6 +1397,7 @@
               "stopping",
               "stopped",
               "terminated",
+              "unreachable",
               "error"
             ],
             "type": "string"
@@ -1410,6 +1416,12 @@
               "spot",
               "on_demand"
             ],
+            "type": "string"
+          },
+          "unreachable_since": {
+            "description": "Start of the confirmed tunnel outage the instance is currently in. Present exactly when status is \"unreachable\", absent otherwise. It is the timestamp the auto-credit for the dead window is computed from, so a ledger credit can be reconciled against it.",
+            "format": "date-time",
+            "nullable": true,
             "type": "string"
           }
         },
@@ -1845,6 +1857,7 @@
               "disk_unavailable",
               "disk_exceeds_offering",
               "model_too_large",
+              "gpu_vram_too_small",
               "price_changed",
               "insufficient_balance",
               "quota_exceeded",
@@ -3981,7 +3994,7 @@
             "$ref": "#/components/parameters/LimitParam"
           },
           {
-            "description": "Filter by customer-facing status (default = all non-terminated)",
+            "description": "Filter by customer-facing status (default = all non-terminated). There is no \"unreachable\" filter value: an unreachable instance is a running instance with a dead tunnel, so it is listed under status=running and reads \"unreachable\" in the response body.",
             "in": "query",
             "name": "status",
             "schema": {
