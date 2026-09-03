@@ -33,8 +33,15 @@
           "application/json": {
             "schema": {
               "properties": {
+                "auto_terminate_hours": {
+                  "description": "Terminate this instance automatically after this many hours of runtime. Omit for no limit (the default). The countdown starts when the instance reaches `running`, not when you call this — provisioning is neither billed nor counted against the limit — and the resolved deadline is returned as `auto_terminate_at` on every read. Enforcement is server-side and survives your process: this is the safety net for an unattended run whose client dies without cleaning up. When it fires the instance is terminated exactly as a DELETE would terminate it (billing stops, the `instance.terminated` webhook fires) and `status_reason` records that the limit was reached. Bounds: at least 1, at most 720 (30 days) — outside them returns 422 `validation_failed`. An explicit `0` is rejected rather than read as \"no limit\"; omit the field for that.",
+                  "example": 8,
+                  "maximum": 720,
+                  "minimum": 1,
+                  "type": "integer"
+                },
                 "cmd": {
-                  "description": "Override the image's CMD. Omit to use the image's own (or none, when `entrypoint` is overridden). Requires `image`.",
+                  "description": "Override the image's CMD. Omit to use the image's own (or none, when `entrypoint` is overridden with a non-empty argv; an empty-array entrypoint clear keeps the image CMD). An explicit empty array clears the CMD. Empty strings inside a non-empty argv are rejected (422). Requires `image`.",
                   "items": {
                     "type": "string"
                   },
@@ -47,7 +54,7 @@
                   "type": "integer"
                 },
                 "entrypoint": {
-                  "description": "Override the image's ENTRYPOINT (docker semantics — also drops the image CMD unless `cmd` is given). Omit to use the image's own. At most 32 arguments / 4KB. Requires `image`.",
+                  "description": "Override the image's ENTRYPOINT (docker semantics — also drops the image CMD unless `cmd` is given). Omit to use the image's own; an explicit empty array clears it while keeping the image CMD (docker `--entrypoint \"\"` semantics). Empty strings inside a non-empty argv are rejected (422). At most 32 arguments / 4KB. Requires `image`.",
                   "items": {
                     "type": "string"
                   },
@@ -136,11 +143,15 @@
                   "type": "string"
                 },
                 "tier": {
+                  "description": "`spot` is soft-deprecated: spot capacity is currently unavailable sitewide (requests with tier=spot return no offerings); use on_demand.",
                   "enum": [
                     "spot",
                     "on_demand"
                   ],
-                  "type": "string"
+                  "type": "string",
+                  "x-gpuai-deprecated-enum-values": [
+                    "spot"
+                  ]
                 },
                 "viewed_price_per_hour": {
                   "description": "The retail $/hr the caller displayed to the user before launch. A catalog row is a quote, not a booking, and pinning an offering fixes which machine is placed but not its rate. If the launch-time price exceeds this by more than $0.01 the launch fails with `price_changed` carrying the new price instead of proceeding at the higher price; omit to accept the launch-time price (previous behavior). Refusal only — it is never read as consent, so it can neither raise what you are charged nor widen what may be bought on your behalf. Use max_price_per_hour to bound spend.",
@@ -883,6 +894,125 @@
         ],
         "type": "object"
       },
+      "Embedding": {
+        "properties": {
+          "embedding": {
+            "description": "The embedding vector as 32-bit floats.",
+            "items": {
+              "format": "float",
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "index": {
+            "description": "Position of this vector's input in the request.",
+            "type": "integer"
+          },
+          "object": {
+            "enum": [
+              "embedding"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "object",
+          "embedding",
+          "index"
+        ],
+        "type": "object"
+      },
+      "EmbeddingsRequest": {
+        "properties": {
+          "dimensions": {
+            "description": "Requested output dimensionality, for models that support truncated (Matryoshka) embeddings. Passed through to the model when set.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "encoding_format": {
+            "default": "float",
+            "description": "Only \"float\" is supported. A value of \"base64\" is rejected with invalid_request_error / unsupported_parameter.",
+            "enum": [
+              "float"
+            ],
+            "type": "string"
+          },
+          "input": {
+            "description": "Text to embed: either a single string or an array of up to 2048 strings. Token-id arrays are not supported.",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 2048,
+                "type": "array"
+              }
+            ]
+          },
+          "model": {
+            "description": "Canonical embedding model id, e.g. \"gpuai/qwen3-embedding-8b\".",
+            "type": "string"
+          },
+          "user": {
+            "description": "Opaque end-user identifier for abuse tracing. Optional.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "model",
+          "input"
+        ],
+        "type": "object"
+      },
+      "EmbeddingsResponse": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Embedding"
+            },
+            "type": "array"
+          },
+          "model": {
+            "description": "Canonical (gpuai/...) model id, NEVER the upstream identifier.",
+            "type": "string"
+          },
+          "object": {
+            "enum": [
+              "list"
+            ],
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/EmbeddingsUsage"
+          }
+        },
+        "required": [
+          "object",
+          "data",
+          "model",
+          "usage"
+        ],
+        "type": "object"
+      },
+      "EmbeddingsUsage": {
+        "description": "Embeddings are billed on input tokens only, so this block carries no completion_tokens field — an embeddings call emits none, and total_tokens always equals prompt_tokens.",
+        "properties": {
+          "prompt_tokens": {
+            "type": "integer"
+          },
+          "total_tokens": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "prompt_tokens",
+          "total_tokens"
+        ],
+        "type": "object"
+      },
       "Environments": {
         "description": "The launch environment catalog (GET /v1/environments).",
         "properties": {
@@ -1366,6 +1496,16 @@
       },
       "Instance": {
         "properties": {
+          "auto_terminate_at": {
+            "description": "When the runtime limit expires and the platform terminates this instance. Computed when the instance became running (ready_at + auto_terminate_hours), so the countdown covers usable runtime, not the time spent provisioning. Absent when no limit was set, when the instance is not running yet, or once the platform has begun acting on an elapsed limit.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "auto_terminate_hours": {
+            "description": "The runtime limit this instance was launched with, in hours (the `auto_terminate_hours` you sent). Absent means the instance runs until something stops it. It stays present after the limit has fired, so a terminated instance still explains itself.",
+            "example": 8,
+            "type": "integer"
+          },
           "connection": {
             "nullable": true,
             "properties": {
@@ -1458,7 +1598,7 @@
             "type": "string"
           },
           "status_reason": {
-            "description": "Why the instance is in the error state, e.g. \"provisioning stalled: the instance started but never became reachable\". Present only on errored instances.",
+            "description": "Why the instance stopped or failed, e.g. \"provisioning stalled: the instance started but never became reachable\", or — when a runtime limit fired — \"Terminated: this instance reached the 8-hour runtime limit set at launch\". Present only when the platform has something to explain.",
             "type": "string"
           },
           "terminated_at": {
@@ -1467,11 +1607,15 @@
             "type": "string"
           },
           "tier": {
+            "description": "`spot` is soft-deprecated: spot capacity is currently unavailable sitewide (requests with tier=spot return no offerings); use on_demand.",
             "enum": [
               "spot",
               "on_demand"
             ],
-            "type": "string"
+            "type": "string",
+            "x-gpuai-deprecated-enum-values": [
+              "spot"
+            ]
           },
           "unreachable_since": {
             "description": "Start of the confirmed tunnel outage the instance is currently in. Present exactly when status is \"unreachable\", absent otherwise. It is the timestamp the auto-credit for the dead window is computed from, so a ledger credit can be reconciled against it.",
@@ -1526,7 +1670,7 @@
             "type": "string"
           },
           "category": {
-            "description": "Browse-facing category; mirrors modality (chat/image/video).",
+            "description": "Browse-facing category; mirrors modality (chat/image/video/embedding).",
             "type": "string"
           },
           "context_length": {
@@ -1535,6 +1679,14 @@
           "created": {
             "type": "integer"
           },
+          "fine_tunable": {
+            "description": "Whether this model can be used as the base of a managed fine-tuning job. The tunable allowlist is operator-curated and much narrower than the serving catalog, so this is false for almost every model. Absent means false.",
+            "type": "boolean"
+          },
+          "fine_tune_base_model": {
+            "description": "The exact id to send as `model` when creating a fine-tuning job for this entry. Present only when `fine_tunable` is true, and deliberately distinct from `id`: the allowlist matches the customer-facing base id (e.g. `qwen2.5-7b-instruct`), which a served model normally carries as an alias rather than as its namespaced catalog id.",
+            "type": "string"
+          },
           "id": {
             "type": "string"
           },
@@ -1542,7 +1694,8 @@
             "enum": [
               "chat",
               "image",
-              "video"
+              "video",
+              "embedding"
             ],
             "type": "string"
           },
@@ -1857,11 +2010,15 @@
             "type": "integer"
           },
           "tier": {
+            "description": "`spot` is soft-deprecated: spot capacity is currently unavailable sitewide (requests with tier=spot return no offerings); use on_demand.",
             "enum": [
               "spot",
               "on_demand"
             ],
-            "type": "string"
+            "type": "string",
+            "x-gpuai-deprecated-enum-values": [
+              "spot"
+            ]
           }
         },
         "required": [
@@ -3571,6 +3728,71 @@
         ]
       }
     },
+    "/embeddings": {
+      "post": {
+        "description": "Synchronous text embeddings. Accepts a single string or an array of up to 2048 strings and returns one float vector per input, in request order. Billed on the upstream's reported prompt tokens at the model's listed input rate; an embeddings call emits no completion tokens, so `usage` carries `prompt_tokens` and `total_tokens` only. `encoding_format` accepts only `float` — a value of `base64` is rejected with `unsupported_parameter`. A chat model id on this route returns 404 `model_not_found`: the id is valid, but not on this surface.",
+        "operationId": "createEmbeddings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmbeddingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmbeddingsResponse"
+                }
+              }
+            },
+            "description": "One embedding vector per input, in request order."
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/OpenAIUpstreamTimeout"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Create embeddings (OpenAI-compatible)",
+        "tags": [
+          "Inference"
+        ]
+      },
+      "x-dark-launch": true
+    },
     "/environments": {
       "get": {
         "description": "The server-controlled launch environment catalog — the certified framework roster, the selectable version(s) per framework (the version picker), the \"What's included\" software lists, and the raw-VM OS catalog. These are exactly the values accepted by the `environment` field of POST /v1/instances.",
@@ -3660,6 +3882,59 @@
           }
         ],
         "summary": "Upload a fine-tuning dataset file (OpenAI-compatible)",
+        "tags": [
+          "FineTuning"
+        ]
+      }
+    },
+    "/files/{id}": {
+      "get": {
+        "description": "Returns the metadata for one of your uploaded files. The lookup is scoped to the organization the API key belongs to: a file id that does not exist and one that belongs to another organization both return the same 404, so this route cannot be used to probe for other tenants' ids.\n\nUse it to check that a `training_file` is present and usable BEFORE creating a fine-tuning job — the create path performs the identical ownership check, so a file this route returns is a file that create will accept.",
+        "operationId": "retrieveFile",
+        "parameters": [
+          {
+            "description": "The file id returned by the upload, e.g. `file-9f2c1a...`.",
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileObject"
+                }
+              }
+            },
+            "description": "The file object."
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          }
+        },
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "summary": "Retrieve a file (OpenAI-compatible)",
         "tags": [
           "FineTuning"
         ]
@@ -4315,7 +4590,8 @@
               "enum": [
                 "chat",
                 "image",
-                "video"
+                "video",
+                "embedding"
               ],
               "type": "string"
             }
@@ -4478,7 +4754,7 @@
             }
           },
           {
-            "description": "Exact-match filter on tier",
+            "description": "Exact-match filter on tier. `spot` is soft-deprecated: spot capacity is currently unavailable sitewide (requests with tier=spot return no offerings); use on_demand.",
             "in": "query",
             "name": "tier",
             "schema": {
@@ -4486,7 +4762,10 @@
                 "spot",
                 "on_demand"
               ],
-              "type": "string"
+              "type": "string",
+              "x-gpuai-deprecated-enum-values": [
+                "spot"
+              ]
             }
           },
           {
