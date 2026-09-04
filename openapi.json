@@ -192,6 +192,16 @@
         },
         "description": "OK"
       },
+      "OpenAIBadGateway": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "The upstream answered but its response could not be used (OpenAI error envelope): code upstream_response_too_large when the vector payload exceeded the per-request size limit, or upstream_error for a malformed / misaligned response. Not retryable as-is for upstream_response_too_large — send fewer inputs."
+      },
       "OpenAIBadRequest": {
         "content": {
           "application/json": {
@@ -300,6 +310,16 @@
             }
           }
         }
+      },
+      "OpenAIRequestTooLarge": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/OpenAIErrorEnvelope"
+            }
+          }
+        },
+        "description": "Request body too large (OpenAI error envelope, code request_too_large)."
       },
       "OpenAIUnauthorized": {
         "content": {
@@ -938,7 +958,7 @@
             "type": "string"
           },
           "input": {
-            "description": "Text to embed: either a single string or an array of up to 2048 strings. Token-id arrays are not supported.",
+            "description": "Text to embed: either a single string or an array of up to 2048 strings. Token-id arrays are not supported. The per-request ceiling is bounded so the response stays under 64 MiB — about 680 inputs at 4096 dimensions, fewer at a larger `dimensions` value; an over-limit batch is rejected with 400 invalid_request_error whose message states the limit, before any processing.",
             "oneOf": [
               {
                 "type": "string"
@@ -3730,7 +3750,7 @@
     },
     "/embeddings": {
       "post": {
-        "description": "Synchronous text embeddings. Accepts a single string or an array of up to 2048 strings and returns one float vector per input, in request order. Billed on the upstream's reported prompt tokens at the model's listed input rate; an embeddings call emits no completion tokens, so `usage` carries `prompt_tokens` and `total_tokens` only. `encoding_format` accepts only `float` — a value of `base64` is rejected with `unsupported_parameter`. A chat model id on this route returns 404 `model_not_found`: the id is valid, but not on this surface.",
+        "description": "Synchronous text embeddings. Accepts a single string or an array of up to 2048 strings, bounded so the response stays under 64 MiB (about 680 inputs at 4096 dimensions; fewer at a larger `dimensions` value) — over-limit requests are rejected with 400 before any processing. Returns one float vector per input, in request order. Billed on the upstream's reported prompt tokens at the model's listed input rate, rounded up to the next whole cent per request; an embeddings call emits no completion tokens, so `usage` carries `prompt_tokens` and `total_tokens` only. `encoding_format` accepts only `float` — a value of `base64` is rejected with `unsupported_parameter`. A chat model id on this route returns 404 `model_not_found`: the id is valid, but not on this surface.",
         "operationId": "createEmbeddings",
         "requestBody": {
           "content": {
@@ -3768,11 +3788,17 @@
           "404": {
             "$ref": "#/components/responses/OpenAINotFound"
           },
+          "413": {
+            "$ref": "#/components/responses/OpenAIRequestTooLarge"
+          },
           "429": {
             "$ref": "#/components/responses/OpenAIRateLimited"
           },
           "500": {
             "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/OpenAIBadGateway"
           },
           "503": {
             "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
@@ -3790,8 +3816,7 @@
         "tags": [
           "Inference"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/environments": {
       "get": {
