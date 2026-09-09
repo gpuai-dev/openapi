@@ -172,6 +172,16 @@
       }
     },
     "responses": {
+      "AutolaunchRulePage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/AutolaunchRulePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
       "GPUTypePage": {
         "content": {
           "application/json": {
@@ -187,6 +197,16 @@
           "application/json": {
             "schema": {
               "$ref": "#/components/schemas/InstancePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
+      "MarketHistory": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/MarketHistoryResponse"
             }
           }
         },
@@ -449,6 +469,16 @@
         },
         "description": "OK"
       },
+      "WatchRulePage": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/WatchRulePage"
+            }
+          }
+        },
+        "description": "OK"
+      },
       "WebhookEndpointPage": {
         "content": {
           "application/json": {
@@ -461,6 +491,255 @@
       }
     },
     "schemas": {
+      "AutolaunchLaunchSpec": {
+        "additionalProperties": true,
+        "description": "The full create-instance body this rule freezes and replays — the same shape POST /v1/instances accepts. It is modelled as an open object rather than a $ref because the instance-create body is an inline requestBody schema rather than a named component; promoting it would rewrite the instances operation and every generated client's signature for it, in a change that only needs to STORE one.\n\nTwo fields behave differently here than on a live create: `offering_id` is REJECTED (a pinned offering produces a rule that can never fire, because offering identity churns between catalog polls), and `auto_terminate_hours` is OVERWRITTEN from the rule's `max_runtime_hours` so a nested field cannot widen the runtime bound the customer approved.\n",
+        "type": "object"
+      },
+      "AutolaunchRule": {
+        "description": "A standing, pre-approved purchase order. It carries no upstream supplier identity, no org id, and no identifier of the API key that consented — the consenting principal is recorded in storage for the fire-time re-check, and a credential identifier has no business in a rule listing.\n",
+        "properties": {
+          "attempts_this_edge": {
+            "description": "Launch attempts made since the current condition edge began.",
+            "type": "integer"
+          },
+          "capacity_class": {
+            "description": "Capacity class the rule is narrowed to, or null for both.",
+            "enum": [
+              "secure",
+              "community",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "condition_kind": {
+            "enum": [
+              "price_under",
+              "in_stock",
+              "count_at_least"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "created_by_surface": {
+            "description": "Which entrance consented. A dashboard rule has no API key behind it, which is why its fire-time revocation failure is `authority_revoked` (the approving admin was demoted) rather than `key_revoked`.\n",
+            "enum": [
+              "api_key",
+              "dashboard"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "description": "False once disarmed or cancelled. A disarmed rule cannot be re-armed.",
+            "type": "boolean"
+          },
+          "gpu_model": {
+            "description": "The GPU model the rule watches and launches, e.g. \"H100\".",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_failure_reason": {
+            "description": "Why the last attempt did not buy anything: over_ceiling, capacity_race, stale_reference, key_revoked, authority_revoked or validation_failed, optionally with a colon-separated detail. Match the leading token. It never carries API key material.\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "launched_instance_id": {
+            "description": "The instance this rule launched, once it has fired.",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_price_per_hour": {
+            "description": "The CEILING, and the consent. Dollars per hour for the WHOLE INSTANCE, not per GPU. The launch is abandoned — never repriced — if the live price exceeds it.\n",
+            "format": "double",
+            "type": "number"
+          },
+          "max_runtime_hours": {
+            "description": "How long an auto-launched instance may run before the platform terminates it, enforced through the instance's own auto_terminate_hours.\n",
+            "maximum": 720,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_total_usd": {
+            "description": "The worst-case total the customer approved: max_price_per_hour × max_runtime_hours, computed by the server and echoed on every read so a client never has to derive the number it is displaying.\n",
+            "format": "double",
+            "type": "number"
+          },
+          "region": {
+            "description": "Canonical region the rule is narrowed to, or null for every region.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AutolaunchLaunchSpec",
+            "description": "The frozen launch spec, as READ. Every value under `env` is returned as the literal `[REDACTED]` — the key names are kept so you can see what the launch will set, but the values are not readable back on any surface, by any scope. Reading a rule needs only `autolaunch:read`, which every full_access, standard and read_only key holds, so a rule listing must not be a credential listing.\nThis changes nothing about what the rule DOES: the stored spec keeps the real values and replays them at fire time. If you need to change a token, delete the rule and create a new one.\n"
+          },
+          "state": {
+            "description": "armed = waiting for the condition. launching = an attempt is in flight. fired = a successful launch consumed the rule's one shot. expired = the per-edge attempt budget ran out. A lost capacity race costs nothing and does NOT consume the shot.\n",
+            "enum": [
+              "armed",
+              "launching",
+              "fired",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "threshold": {
+            "description": "The TRIGGER. Dollars PER GPU-HOUR for price_under, or a unit count for count_at_least. Null for in_stock. This is NOT the spend cap — see max_price_per_hour, which is in a different unit.\n",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "gpu_model",
+          "region",
+          "capacity_class",
+          "condition_kind",
+          "threshold",
+          "max_price_per_hour",
+          "max_runtime_hours",
+          "max_total_usd",
+          "spec",
+          "state",
+          "attempts_this_edge",
+          "last_failure_reason",
+          "launched_instance_id",
+          "created_by_surface",
+          "enabled",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "AutolaunchRuleCreate": {
+        "properties": {
+          "acknowledged_max_total_usd": {
+            "description": "REQUIRED. Echo of the worst-case total, max_price_per_hour × max_runtime_hours, accepted within one cent. This is the consent gate: a caller that never computed this number cannot have shown it to the person approving the rule, and a caller that displayed a different number disagrees with what is about to be stored. Either way the request is refused so the caller can re-render the real figure.\n",
+            "format": "double",
+            "type": "number"
+          },
+          "capacity_class": {
+            "description": "Omit or send null to consider both capacity classes.",
+            "enum": [
+              "secure",
+              "community",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "condition_kind": {
+            "enum": [
+              "price_under",
+              "in_stock",
+              "count_at_least"
+            ],
+            "type": "string"
+          },
+          "gpu_model": {
+            "type": "string"
+          },
+          "max_price_per_hour": {
+            "description": "The CEILING, in dollars per hour for the WHOLE INSTANCE. Required even for in_stock rules: \"buy it when it comes back\" with no ceiling is an unbounded authorization, and this resource has no such shape. Values above the maximum are refused with a 422 naming the bound.\n",
+            "exclusiveMinimum": 0,
+            "format": "double",
+            "maximum": 999999.999999,
+            "type": "number"
+          },
+          "max_runtime_hours": {
+            "maximum": 720,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "region": {
+            "description": "Omit or send null to consider every region.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "spec": {
+            "$ref": "#/components/schemas/AutolaunchLaunchSpec"
+          },
+          "threshold": {
+            "description": "The TRIGGER, in dollars PER GPU-HOUR for price_under or a unit count for count_at_least. Required and greater than zero for both. Ignored for in_stock. Not the spend cap. Values above the maximum are refused with a 422 naming the bound — it is the largest value the column stores.\n",
+            "format": "double",
+            "maximum": 999999.999999,
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "gpu_model",
+          "condition_kind",
+          "max_price_per_hour",
+          "max_runtime_hours",
+          "spec",
+          "acknowledged_max_total_usd"
+        ],
+        "type": "object"
+      },
+      "AutolaunchRuleDisarm": {
+        "description": "The entire PATCH surface. `enabled` must be present and must be false. Any other key is refused rather than accepted-and-ignored, because a PATCH carrying a new ceiling that returned 200 would leave the caller believing the cap had moved.\n",
+        "properties": {
+          "enabled": {
+            "description": "Must be false. Sending true is refused: a fired rule consumed its one shot, so \"resume\" would silently be an authorization nobody gave, and arming again is a create.\n",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "AutolaunchRulePage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/AutolaunchRule"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
       "ChatChoice": {
         "properties": {
           "finish_reason": {
@@ -1677,6 +1956,81 @@
         ],
         "type": "object"
       },
+      "MarketHistoryPoint": {
+        "description": "One bucket of a price/stock series.\n\nThe nullability of `price_per_gpu_hour` and `available_count` is the contract, not a convenience: a real 0 is a bucket we sampled and found sold out, and null is a bucket we never successfully sampled. A client that coerces null to 0 will report GPU.ai's own polling outages as supplier stockouts, and must not interpolate across a null.\n",
+        "properties": {
+          "available_count": {
+            "description": "Obtainable units across every matching offer in this bucket. 0 means we sampled and the market was sold out; null means we did not sample this bucket.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bucket_ts": {
+            "description": "Start of the bucket, UTC, aligned to the bucket width.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_count": {
+            "description": "GPUs in that node. Present only alongside `node_price_per_hour`, and it is what lets a renderer qualify a derived rate as \"(from an 8-GPU node)\" rather than implying single-GPU rentability.",
+            "type": "integer"
+          },
+          "node_price_per_hour": {
+            "description": "Whole-node hourly price the per-GPU rate was divided out of. Present only when the bucket's floor came from a multi-GPU node; absent for single-GPU capacity.",
+            "format": "double",
+            "type": "number"
+          },
+          "price_per_gpu_hour": {
+            "description": "GPU.ai's floor per-GPU hourly rate for this bucket, or null if we did not sample this bucket. Null is NOT zero.",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "bucket_ts",
+          "price_per_gpu_hour",
+          "available_count"
+        ],
+        "type": "object"
+      },
+      "MarketHistoryResponse": {
+        "description": "A price/stock series for one (gpu_model, region, capacity_class) key.\n\nPoints cover the FULL bucket grid across the requested window, including the buckets we did not sample — a gap therefore has visible width rather than disappearing between two adjacent points.\n",
+        "properties": {
+          "bucket_seconds": {
+            "description": "Resolution the server actually answered at. Echoed because the wide views downsample at query time, so a client must never assume 900.",
+            "type": "integer"
+          },
+          "capacity_class": {
+            "description": "Echoes the request. Empty means the series is merged across both classes.",
+            "type": "string"
+          },
+          "gpu_model": {
+            "type": "string"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/MarketHistoryPoint"
+            },
+            "type": "array"
+          },
+          "region": {
+            "description": "Echoes the request. Empty means the series is MERGED across every region, the same thing it meant on the way in.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "gpu_model",
+          "region",
+          "capacity_class",
+          "bucket_seconds",
+          "points"
+        ],
+        "type": "object"
+      },
       "Model": {
         "properties": {
           "aliases": {
@@ -2094,6 +2448,7 @@
               "insufficient_balance",
               "quota_exceeded",
               "rate_limited",
+              "creator_check_unavailable",
               "internal_error",
               "operation_failed"
             ],
@@ -2751,6 +3106,251 @@
         ],
         "type": "object"
       },
+      "WatchRule": {
+        "description": "A rule that notifies when the market moves on a GPU model. It carries no upstream supplier identity of any kind, and no delivery address — those are properties of the resource, not of a particular response.\n",
+        "properties": {
+          "capacity_class": {
+            "description": "Capacity class the rule is narrowed to, or null for both.",
+            "enum": [
+              "secure",
+              "community",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "condition_kind": {
+            "enum": [
+              "price_under",
+              "in_stock",
+              "count_at_least"
+            ],
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deactivated_reason": {
+            "description": "Why an automatically disabled rule was disabled — for example its creator no longer belongs to the organization.\n",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "gpu_model": {
+            "description": "The GPU model the rule watches, e.g. \"H100\".",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "last_fired_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quiet_until": {
+            "description": "While set, the rule will not re-fire even if the condition re-crosses — the quiet window that stops a boundary-hugging signal alerting on every crossing.\n",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "region": {
+            "description": "Canonical region the rule is narrowed to, or null for every region.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "state": {
+            "description": "armed = the condition is currently false and the next transition to true will alert. fired = it has alerted and has not yet re-armed.\n",
+            "enum": [
+              "armed",
+              "fired"
+            ],
+            "type": "string"
+          },
+          "threshold": {
+            "description": "Per-GPU hourly price for price_under, or a unit count for count_at_least. Null for in_stock, which takes no threshold.\n",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "webhook_endpoint_override_id": {
+            "description": "Id of a webhook endpoint registered by this organization, or null to deliver to every registered endpoint. Never a URL.\n",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "gpu_model",
+          "region",
+          "capacity_class",
+          "condition_kind",
+          "threshold",
+          "state",
+          "last_fired_at",
+          "quiet_until",
+          "webhook_endpoint_override_id",
+          "enabled",
+          "deactivated_reason",
+          "created_at",
+          "updated_at"
+        ],
+        "type": "object"
+      },
+      "WatchRuleCreate": {
+        "properties": {
+          "capacity_class": {
+            "description": "Omit or send null to watch both capacity classes.",
+            "enum": [
+              "secure",
+              "community",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "condition_kind": {
+            "enum": [
+              "price_under",
+              "in_stock",
+              "count_at_least"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "description": "Defaults to true. Create with false to park a rule.",
+            "type": "boolean"
+          },
+          "gpu_model": {
+            "type": "string"
+          },
+          "region": {
+            "description": "Omit or send null to watch every region.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "threshold": {
+            "description": "Required and greater than zero for price_under and count_at_least. Ignored for in_stock, which is stored with no threshold.\n",
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "webhook_endpoint_override_id": {
+            "description": "Id of an endpoint already registered via /webhook-endpoints. A URL here is rejected: the resource holds references, never addresses.\n",
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "gpu_model",
+          "condition_kind"
+        ],
+        "type": "object"
+      },
+      "WatchRulePage": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WatchRule"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "WatchRuleUpdate": {
+        "description": "Partial update. An absent key keeps the stored value; an explicit null on region, capacity_class or webhook_endpoint_override_id clears it. The merged rule is re-validated as a whole.\n",
+        "properties": {
+          "capacity_class": {
+            "enum": [
+              "secure",
+              "community",
+              null
+            ],
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "condition_kind": {
+            "enum": [
+              "price_under",
+              "in_stock",
+              "count_at_least"
+            ],
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "gpu_model": {
+            "type": "string"
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "threshold": {
+            "format": "double",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "webhook_endpoint_override_id": {
+            "format": "uuid",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
       "WebhookEndpoint": {
         "properties": {
           "created_at": {
@@ -2841,6 +3441,200 @@
   },
   "openapi": "3.1.0",
   "paths": {
+    "/autolaunch-rules": {
+      "get": {
+        "description": "Lists this organization's auto-launch rules. Requires the `autolaunch:read` scope, which `standard` and `full_access` keys carry. Rules belonging to other organizations are never returned, and rules created through the dashboard are included — the list is the organization's, not the key's.\n",
+        "operationId": "listAutolaunchRules",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/AutolaunchRulePage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List auto-launch rules",
+        "tags": [
+          "Autolaunch"
+        ]
+      },
+      "post": {
+        "description": "Creates a standing, pre-approved purchase order. When the condition holds and the live price is at or under `max_price_per_hour`, the platform launches the frozen `spec` with no further confirmation from anyone — the customer is approving NOW for a purchase that happens LATER, while nobody is watching.\n\nSCOPE. Requires the `autolaunch:write` scope, which is granted only EXPLICITLY. It is deliberately NOT covered by `full_access`, `standard` or `read_only`: `instances:write` is real-time authority, exercised with someone present, whereas this is a standing, frozen authorization that fires days later unattended. Treating them as the same authority class would have handed unattended spend authority to every key ever issued, including keys minted long before this resource existed. Most existing keys therefore receive 403 here; the correct response is to mint a key whose scopes map includes `{\"autolaunch\": \"write\"}`, never to retry, to substitute a key, or to fall back to a watch rule.\n\nCONSENT. `acknowledged_max_total_usd` is REQUIRED and must equal `max_price_per_hour × max_runtime_hours` to within one cent. It is the API-level expression of \"a valid confirmation must come AFTER the price\": a caller that never computed the number cannot have shown it to anyone, and a caller that displayed a different number disagrees with what is about to be stored. Show the figure to the person approving the rule, then send it back.\n\nTWO PRICES, TWO UNITS. `threshold` is the TRIGGER, in dollars per GPU-hour — the same unit the market chart and watch rules speak in. `max_price_per_hour` is the CEILING, in dollars per hour for the WHOLE instance. A 4-GPU rule triggering under $4.00/GPU-hr typically carries a $16.00/hr ceiling. Conflating them scales the customer's spend authorization by their GPU count.\n\nFROZEN SPEC. `spec` is the full create-instance body the rule replays, validated at creation with the same validation a live create runs, so a spec that could never launch is refused while a human is present rather than at 3 a.m. `spec.offering_id` is REJECTED — offering identity churns between catalog polls, so a pin produces a rule that can never fire, which is the worst outcome here because the customer believes a purchase is armed. `spec.auto_terminate_hours` is overwritten from `max_runtime_hours` and must not be used to widen the bound.\n\nOrganizations are limited to 10 active rules; the 422 names the limit. The organization spending limit still applies as a backstop at fire time — a launch must fit both its own ceiling and the org cap.\n",
+        "operationId": "createAutolaunchRule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutolaunchRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutolaunchRule"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The API key lacks `autolaunch:write`. This scope is explicit-grant only and is NOT covered by `full_access`, `standard` or `read_only`; the problem detail names the scope and the fix.\n"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed — a missing or mismatched `acknowledged_max_total_usd`, a missing ceiling or runtime bound, an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, a `spec` that would not launch, a pinned `spec.offering_id`, or the active-rule limit already reached.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create an auto-launch rule (pre-approves a bounded, unattended spend)",
+        "tags": [
+          "Autolaunch"
+        ]
+      }
+    },
+    "/autolaunch-rules/{id}": {
+      "delete": {
+        "description": "Deletes the rule and withdraws its pre-approved spend cap immediately. Requires only the `autolaunch:read` scope, for the same reason the disarm PATCH does. Deleting an already-deleted rule returns 404.\n",
+        "operationId": "deleteAutolaunchRule",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Cancel an auto-launch rule",
+        "tags": [
+          "Autolaunch"
+        ]
+      },
+      "get": {
+        "description": "Fetches one auto-launch rule, including the frozen launch spec. Requires the `autolaunch:read` scope. A rule belonging to another organization returns 404 — the same answer as an id that does not exist.\n",
+        "operationId": "getAutolaunchRule",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutolaunchRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get an auto-launch rule",
+        "tags": [
+          "Autolaunch"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Disarms a rule. The body must be exactly `{\"enabled\": false}` and nothing else. Requires only the `autolaunch:read` scope — cancelling a standing spend authorization is deliberately never harder than holding one, so a key narrowed since it created a rule can still stop that rule.\n\nThis is the entire update surface, and the absence is the design. Changing a ceiling, a runtime bound, the targeting or the frozen spec is a DIFFERENT bounded purchase, so it requires deleting the rule and creating a new one through the consent gate. Re-arming is refused too: a fired rule consumed its one shot, so `{\"enabled\": true}` would resurrect a purchase order that was already consented to and spent.\n",
+        "operationId": "disarmAutolaunchRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutolaunchRuleDisarm"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutolaunchRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The body carried a key other than `enabled`, omitted `enabled`, or asked to re-arm the rule.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Disarm an auto-launch rule",
+        "tags": [
+          "Autolaunch"
+        ]
+      }
+    },
     "/billing/deposits": {
       "get": {
         "description": "Returns the organization's stablecoin deposits, newest first, capped at 50. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
@@ -4603,6 +5397,99 @@
         ]
       }
     },
+    "/market-history": {
+      "get": {
+        "description": "Returns GPU.ai's own price and obtainable capacity for one GPU model over a window, at 15-minute or daily resolution. Requires the `market:read` scope (or `full_access`).\n\nTHE NULL CONTRACT. `price_per_gpu_hour` and `available_count` are nullable, and the two states are different facts that must not be collapsed:\n\n* a real `0` means we sampled that bucket and the market was sold out;\n* `null` means we did NOT sample that bucket — a failed poll, a skipped cycle, an incident on our side. It says nothing about supply.\n\nThe response materializes the full bucket grid across the window, so a gap has visible width. Do not interpolate across a null: that asserts a continuity the data does not have, and reading one as a zero reports our own outages as supplier stockouts.\n\nPER-GPU NORMALIZATION. `price_per_gpu_hour` is always a per-GPU rate. When it was divided out of a whole-node price, `node_price_per_hour` and `gpu_count` are present and describe that derivation; they are absent for single-GPU capacity. A per-GPU figure presented without that context implies single-GPU rentability that whole-node capacity does not offer.\n\nWINDOW CAPS. `bucket=1d` is capped at 365 days (the retention window). `bucket=15m` is capped at 90 days when BOTH `region` and `capacity_class` are supplied, and at 31 days when either is omitted, because an unscoped 15-minute series scans every region and class in every bucket. An over-wide window is a 400 naming the cap and both escapes, never a silent truncation.\n\nThis series carries no upstream supplier identity of any kind: the price is GPU.ai's own floor and the count is an aggregate.\n",
+        "operationId": "getMarketHistory",
+        "parameters": [
+          {
+            "description": "GPU model to chart, e.g. \"H100\". Required — it is the leading column of the lookup index.",
+            "in": "query",
+            "name": "gpu_model",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Canonical region to narrow the series to. Omit to MERGE every region rather than to filter on the empty string.",
+            "in": "query",
+            "name": "region",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Capacity class to narrow the series to. Omit to merge both.",
+            "in": "query",
+            "name": "capacity_class",
+            "schema": {
+              "enum": [
+                "secure",
+                "community"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Resolution. Only these two values are accepted: the series cannot be returned finer than it was stored.",
+            "in": "query",
+            "name": "bucket",
+            "schema": {
+              "default": "15m",
+              "enum": [
+                "15m",
+                "1d"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "description": "Start of the window (RFC3339). Defaults to 7 days before `to`.",
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "End of the window (RFC3339). Defaults to now; a future value is clamped to now, since no bucket can exist for a time that has not happened.",
+            "in": "query",
+            "name": "to",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/MarketHistory"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed — a missing `gpu_model`, a non-canonical region, an unknown `capacity_class` or `bucket`, a non-RFC3339 timestamp, a `from` that is not before `to`, or a window wider than the cap for the requested resolution and scope. The detail names the cap and both ways to stay under it.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a GPU's price and availability over time",
+        "tags": [
+          "Market"
+        ]
+      }
+    },
     "/models": {
       "get": {
         "operationId": "listModels",
@@ -5476,6 +6363,190 @@
         ]
       }
     },
+    "/watch-rules": {
+      "get": {
+        "description": "Lists this organization's watch rules. Requires the `watch:read` scope (or `full_access`). Rules belonging to other organizations are never returned.\n",
+        "operationId": "listWatchRules",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "$ref": "#/components/responses/WatchRulePage"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List watch rules",
+        "tags": [
+          "Watch"
+        ]
+      },
+      "post": {
+        "description": "Creates a rule that notifies you when the market moves on a GPU model. Requires the `watch:write` scope (or `full_access`).\n\nA watch rule ONLY notifies. It cannot launch capacity and cannot spend money: there is no field on this resource that provisions anything. Automatic launching is a separate resource with its own spend-consent gate.\n\nTargeting is dimensional — a GPU model plus optional canonical region and capacity class. It is deliberately NOT possible to pin a rule to a specific catalog listing: listing identity is unstable, so a pinned rule can silently match nothing and never fire.\n\nDelivery is to the organization's registered webhook endpoints, plus an email to the rule's creator. `webhook_endpoint_override_id` routes one rule to one specific endpoint and is the id of an endpoint already registered via `/webhook-endpoints` — the resource accepts no URL of any kind.\n\nOrganizations are limited to 50 ENABLED rules; the 422 names the limit.\n",
+        "operationId": "createWatchRule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchRuleCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchRule"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed — an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, an override id that is not an endpoint registered by this organization, a field naming a catalog listing or a delivery address, or the enabled-rule limit already reached.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a watch rule",
+        "tags": [
+          "Watch"
+        ]
+      }
+    },
+    "/watch-rules/{id}": {
+      "delete": {
+        "description": "Deletes a watch rule. Requires the `watch:write` scope (or `full_access`). Deleting an already-deleted rule returns 404.\n",
+        "operationId": "deleteWatchRule",
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a watch rule",
+        "tags": [
+          "Watch"
+        ]
+      },
+      "get": {
+        "description": "Fetches one watch rule. Requires the `watch:read` scope (or `full_access`). A rule belonging to another organization returns 404 — the same answer as an id that does not exist.\n",
+        "operationId": "getWatchRule",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a watch rule",
+        "tags": [
+          "Watch"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Partially updates a watch rule. Requires the `watch:write` scope (or `full_access`).\n\nAn ABSENT key keeps the stored value; an explicit `null` on `region`, `capacity_class` or `webhook_endpoint_override_id` CLEARS it back to \"any\" / \"organization default\". The two are distinguished by which keys the body carries, so send only the keys you mean to change.\n\nEditing a rule RE-ARMS it: the fired latch describes the condition that was replaced, so carrying it across an edit would suppress the first alert on the new one.\n",
+        "operationId": "updateWatchRule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WatchRuleUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WatchRule"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Validation failed against the MERGED rule — for example switching to a threshold condition on a rule that has no stored threshold.\n"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Update a watch rule",
+        "tags": [
+          "Watch"
+        ]
+      }
+    },
     "/webhook-endpoints": {
       "get": {
         "operationId": "listWebhookEndpoints",
@@ -5688,6 +6759,18 @@
     {
       "description": "Webhook endpoints for event delivery. The signing secret is returned once at creation; verify every delivery against it.",
       "name": "Webhooks"
+    },
+    {
+      "description": "Watch rules: get notified when a GPU model's price drops below a number you set, or when it comes back in stock. Watch rules only notify — they never launch capacity and never spend.",
+      "name": "Watch"
+    },
+    {
+      "description": "Auto-launch rules: standing, pre-approved purchase orders that launch a frozen instance spec automatically when a GPU model hits your target, bounded by a whole-instance hourly ceiling and a maximum runtime you approve up front. A separate resource from watch rules — watch notifies, auto-launch spends, and no field converts one into the other.",
+      "name": "Autolaunch"
+    },
+    {
+      "description": "GPU Market history: GPU.ai's own price and obtainable capacity for a GPU model over time, sampled every 15 minutes and retained for a year. A null price or count is a bucket we did not sample, which is NOT the same as a zero.",
+      "name": "Market"
     },
     {
       "description": "Time-bucketed usage aggregates for your organization, optionally grouped by instance or GPU type.",
