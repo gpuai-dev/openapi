@@ -740,6 +740,50 @@
         ],
         "type": "object"
       },
+      "Balance": {
+        "description": "The organization's credit balance with its auto-pay configuration and live burn rate. Mirrors the dashboard's balance contract field for field. No payment-instrument detail appears here — saved cards live behind separate admin-only routes.\n",
+        "properties": {
+          "auto_pay_amount_cents": {
+            "description": "Amount auto-pay charges when it triggers. Meaningful only when auto_pay_enabled.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "auto_pay_enabled": {
+            "type": "boolean"
+          },
+          "auto_pay_threshold_cents": {
+            "description": "Auto-pay triggers when the balance falls below this. Meaningful only when auto_pay_enabled.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "balance_cents": {
+            "description": "Remaining credit in USD cents. May be negative when usage has outrun the balance.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "balance_dollars": {
+            "description": "The same figure in dollars, for display.",
+            "type": "number"
+          },
+          "burn_cents_per_hour": {
+            "description": "Live burn rate in USD cents per hour: the committed hourly price of every instance that is live, counted from launch — so instances still creating, provisioning or booting are included, not only those that have reached running. 0 when nothing is live.\n\n`null` means the burn rate could not be determined. Treat that as unknown, never as 0: reading an unavailable burn rate as \"nothing running\" reports unbounded runway to an organization that may be minutes from empty.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "balance_cents",
+          "balance_dollars",
+          "auto_pay_enabled",
+          "auto_pay_threshold_cents",
+          "auto_pay_amount_cents",
+          "burn_cents_per_hour"
+        ],
+        "type": "object"
+      },
       "ChatChoice": {
         "properties": {
           "finish_reason": {
@@ -2000,6 +2044,13 @@
       "MarketHistoryResponse": {
         "description": "A price/stock series for one (gpu_model, region, capacity_class) key.\n\nPoints cover the FULL bucket grid across the requested window, including the buckets we did not sample — a gap therefore has visible width rather than disappearing between two adjacent points.\n",
         "properties": {
+          "available_cluster_sizes": {
+            "description": "The node shapes that actually have rows in this window, for this gpu_model / region / capacity_class — what a size picker may honestly offer.\n\nThis is what we SAMPLED, not what we may ever sell: offering a shape a model was never listed at draws an empty chart a caller reads as a stockout. An empty array means we looked and found none. It is unaffected by the cluster_size parameter, so a picker's options never depend on which option is currently selected.",
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
           "bucket_seconds": {
             "description": "Resolution the server actually answered at. Echoed because the wide views downsample at query time, so a client must never assume 900.",
             "type": "integer"
@@ -2007,6 +2058,10 @@
           "capacity_class": {
             "description": "Echoes the request. Empty means the series is merged across both classes.",
             "type": "string"
+          },
+          "cluster_size": {
+            "description": "Echoes the request. 0 means the series is MERGED across every node shape, the same thing an omitted parameter meant on the way in.",
+            "type": "integer"
           },
           "gpu_model": {
             "type": "string"
@@ -2026,6 +2081,8 @@
           "gpu_model",
           "region",
           "capacity_class",
+          "cluster_size",
+          "available_cluster_sizes",
           "bucket_seconds",
           "points"
         ],
@@ -3144,7 +3201,7 @@
             "type": "boolean"
           },
           "gpu_model": {
-            "description": "The GPU model the rule watches, e.g. \"H100\".",
+            "description": "The canonical GPU model id the rule watches, e.g. \"h100_sxm\" — a MODEL, not a generation. Alerts match the live catalog exactly, so a rule for a model we do not list could never fire and is refused rather than stored. Case and punctuation are forgiving (\"H100-SXM\" resolves to \"h100_sxm\"), and the canonical id is what is stored and returned. GET /v1/gpu-types lists the models currently on offer; a model with no stock right now is still watchable, which is the point of watching it.\n",
             "type": "string"
           },
           "id": {
@@ -3247,6 +3304,7 @@
             "type": "boolean"
           },
           "gpu_model": {
+            "description": "The canonical GPU model id the rule watches, e.g. \"h100_sxm\" — a MODEL, not a generation. Alerts match the live catalog exactly, so a rule for a model we do not list could never fire and is refused rather than stored. Case and punctuation are forgiving (\"H100-SXM\" resolves to \"h100_sxm\"), and the canonical id is what is stored and returned. GET /v1/gpu-types lists the models currently on offer; a model with no stock right now is still watchable, which is the point of watching it.\n",
             "type": "string"
           },
           "region": {
@@ -3632,6 +3690,34 @@
         "summary": "Disarm an auto-launch rule",
         "tags": [
           "Autolaunch"
+        ]
+      }
+    },
+    "/billing/balance": {
+      "get": {
+        "description": "Returns the organization's credit balance, its auto-pay configuration, and the live burn rate. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter.\n\nDivide `balance_cents` by `burn_cents_per_hour` for the remaining runway in hours. The quotient is undefined in three cases a caller must keep apart: `burn_cents_per_hour` is 0 (nothing running, so the balance funds unbounded idle time), it is `null` (the burn rate could not be determined — NOT the same as idle), or the balance is already at or below zero.\n\nThis is the balance itself — for spend against a configured cap see `/billing/spending-limit`, and for past consumption see `/usage`.\n",
+        "operationId": "getBalance",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Balance"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get the org credit balance",
+        "tags": [
+          "Billing"
         ]
       }
     },
@@ -5403,7 +5489,7 @@
         "operationId": "getMarketHistory",
         "parameters": [
           {
-            "description": "GPU model to chart, e.g. \"H100\". Required — it is the leading column of the lookup index.",
+            "description": "GPU model id to chart, e.g. \"h100_sxm\". Required — it is the leading column of the lookup index.",
             "in": "query",
             "name": "gpu_model",
             "required": true,
@@ -5429,6 +5515,22 @@
                 "community"
               ],
               "type": "string"
+            }
+          },
+          {
+            "description": "Node shape to narrow the series to — 8 means 8-GPU nodes. Omit to MERGE every shape, which is the default and the only view that rows recorded before the per-size split can honestly appear in.\n\nA 1-GPU box and an 8-GPU node are different products at different per-GPU rates, so this is a real dimension of the series and not a display filter. Only shapes we actually sell are accepted: an arbitrary integer would return an empty series indistinguishable from a genuine gap, and this surface exists so \"no data\" and \"nothing to have data about\" are never the same answer. Use available_cluster_sizes from the response to populate a picker — it reports what this GPU was actually listed as in this window, which is narrower than what we may ever sell.",
+            "in": "query",
+            "name": "cluster_size",
+            "schema": {
+              "enum": [
+                1,
+                2,
+                4,
+                8,
+                10,
+                16
+              ],
+              "type": "integer"
             }
           },
           {
@@ -6428,7 +6530,7 @@
                 }
               }
             },
-            "description": "Validation failed — an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, an override id that is not an endpoint registered by this organization, a field naming a catalog listing or a delivery address, or the enabled-rule limit already reached.\n"
+            "description": "Validation failed — a gpu_model that is not a GPU model we list (the detail names the closest ids when there are any), an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, an override id that is not an endpoint registered by this organization, a field naming a catalog listing or a delivery address, or the enabled-rule limit already reached.\n"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -6532,7 +6634,7 @@
                 }
               }
             },
-            "description": "Validation failed against the MERGED rule — for example switching to a threshold condition on a rule that has no stored threshold.\n"
+            "description": "Validation failed against the MERGED rule — for example switching to a threshold condition on a rule that has no stored threshold, or re-targeting the rule at a gpu_model we do not list. A gpu_model already stored is only re-checked when the key is SENT, so a rule can always be parked or deleted whatever it holds.\n"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
