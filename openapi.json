@@ -540,7 +540,7 @@
             "type": "boolean"
           },
           "gpu_model": {
-            "description": "The GPU model the rule watches and launches, e.g. \"H100\".",
+            "description": "The canonical GPU model id the rule targets and launches, e.g. \"h100_sxm\" — a MODEL, not a generation. \"H100\" names three differently priced SKUs, matches nothing in the catalog, and is refused: a rule that can never fire is a standing purchase order the customer believes is armed. Case and punctuation are forgiving (\"RTX-A4000\" resolves to \"rtx_a4000\") and the canonical id is what is stored. It must also match spec.gpu_type, or the rule would wait on one market and buy from another.\n",
             "type": "string"
           },
           "id": {
@@ -555,8 +555,7 @@
             ]
           },
           "launched_instance_id": {
-            "description": "The instance this rule launched, once it has fired.",
-            "format": "uuid",
+            "description": "The instance this rule launched, once it has fired — an instance id of the form \"gpu-\" + 8 lowercase hex, the same string /v1/instances returns. Not a uuid, and deliberately carries no format or pattern: no other instance-id field in this document constrains its shape, and a generated client-side assertion on an id grammar turns a server-side widening into a client-side outage.\n",
             "type": [
               "string",
               "null"
@@ -3574,7 +3573,7 @@
                 }
               }
             },
-            "description": "Validation failed — a missing or mismatched `acknowledged_max_total_usd`, a missing ceiling or runtime bound, an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, a `spec` that would not launch, a pinned `spec.offering_id`, or the active-rule limit already reached.\n"
+            "description": "Validation failed — a missing or mismatched `acknowledged_max_total_usd`, a missing ceiling or runtime bound, an unknown condition kind, a non-canonical region, a missing threshold on a threshold condition, a `spec` that would not launch, a pinned `spec.offering_id`, or the active-rule limit already reached.\n\nAlso refused: anything that would arm a rule which can never succeed. A `gpu_model` (or `spec.gpu_type`) that is not a model we list; a `spec.gpu_type` that disagrees with the rule's `gpu_model`; and a `spec.gpu_count` that is not a node shape a single launch can ask for (1, 2, 4 or 8 — 3, 5, 6 and 7 all pass an ordinary bounds check and none is a machine anyone rents).\n\nNOT refused: a `max_price_per_hour` below `threshold` x `spec.gpu_count`. The two are in different units — `threshold` is per GPU-hour, the ceiling is for the WHOLE instance — but the launch aborts only above ceiling/gpu_count, a LOWER bar than the trigger, so such a rule waits and then buys once the market falls far enough. That shape is supported deliberately.\n"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
