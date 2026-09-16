@@ -2180,6 +2180,14 @@
           },
           "pricing": {
             "properties": {
+              "cached_input_per_1m_tokens_cents": {
+                "description": "cached_input_per_1m_tokens_microcents rounded to whole cents; omitted when the exact rate rounds below half a cent.",
+                "type": "integer"
+              },
+              "cached_input_per_1m_tokens_microcents": {
+                "description": "Exact per-1M-token rate in micro-cents (1e-6 cent) for the cache-HIT part of a chat prompt (usage.prompt_tokens_details.cached_tokens). Present only on models with a published cached-input rate; absent means no discount — every prompt token bills at input_per_1m_tokens_cents. Treat this field as the presence signal: cached rates are routinely sub-cent, so the rounded cents field below is often omitted.",
+                "type": "integer"
+              },
               "currency": {
                 "type": "string"
               },
