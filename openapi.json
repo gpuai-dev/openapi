@@ -2194,8 +2194,21 @@
               "input_per_1m_tokens_cents": {
                 "type": "integer"
               },
+              "off_peak": {
+                "$ref": "#/components/schemas/ModelRate"
+              },
               "output_per_1m_tokens_cents": {
                 "type": "integer"
+              },
+              "peak": {
+                "$ref": "#/components/schemas/ModelRate"
+              },
+              "peak_windows_utc": {
+                "description": "The daily UTC ranges during which the `peak` rates apply, start inclusive and end exclusive (\"24:00\" is a valid end; a range whose end sorts before its start wraps midnight). Present only on a model priced by time of day.",
+                "items": {
+                  "$ref": "#/components/schemas/PeakWindow"
+                },
+                "type": "array"
               },
               "per_image_cents": {
                 "type": "integer"
@@ -2218,6 +2231,14 @@
               "per_video_second_microcents": {
                 "description": "Exact per-second-of-output-video rate in micro-cents (1e-6 cent). Prefer this for video models.",
                 "type": "integer"
+              },
+              "period": {
+                "description": "Present only on a model priced by time of day. Which side of the peak schedule the instant this response was rendered falls on; the flat rate fields above are the rates in effect at that instant. A request is billed at the rate in effect when it ARRIVES (UTC), so a caller planning a call for later should price it from `peak` / `off_peak` and `peak_windows_utc`.",
+                "enum": [
+                  "peak",
+                  "off_peak"
+                ],
+                "type": "string"
               }
             },
             "type": "object"
@@ -2266,6 +2287,30 @@
           "object",
           "data"
         ],
+        "type": "object"
+      },
+      "ModelRate": {
+        "description": "One per-1M-token rate triple, in rounded cents and exact micro-cents (1e-6 cent). Prefer the micro-cent fields for arithmetic; cached rates are routinely sub-cent and their cents field is then omitted.",
+        "properties": {
+          "cached_input_per_1m_tokens_cents": {
+            "type": "integer"
+          },
+          "cached_input_per_1m_tokens_microcents": {
+            "type": "integer"
+          },
+          "input_per_1m_tokens_cents": {
+            "type": "integer"
+          },
+          "input_per_1m_tokens_microcents": {
+            "type": "integer"
+          },
+          "output_per_1m_tokens_cents": {
+            "type": "integer"
+          },
+          "output_per_1m_tokens_microcents": {
+            "type": "integer"
+          }
+        },
         "type": "object"
       },
       "OpenAIErrorEnvelope": {
@@ -2381,6 +2426,24 @@
           "kind",
           "state",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "PeakWindow": {
+        "description": "One daily UTC time range during which a model's peak rates apply.",
+        "properties": {
+          "end": {
+            "description": "\"HH:MM\" UTC, exclusive (\"24:00\" means until midnight).",
+            "type": "string"
+          },
+          "start": {
+            "description": "\"HH:MM\" UTC, inclusive.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "start",
+          "end"
         ],
         "type": "object"
       },
