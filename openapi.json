@@ -783,6 +783,172 @@
         ],
         "type": "object"
       },
+      "BillingDetails": {
+        "properties": {
+          "address_line1": {
+            "type": "string"
+          },
+          "address_line2": {
+            "type": "string"
+          },
+          "city": {
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2 code, or empty.",
+            "example": "DE",
+            "type": "string"
+          },
+          "has_tax_id": {
+            "type": "boolean"
+          },
+          "legal_name": {
+            "example": "Acme GmbH",
+            "type": "string"
+          },
+          "postal_code": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "tax_id_enabled": {
+            "description": "False when this deployment cannot store a Tax ID.",
+            "type": "boolean"
+          },
+          "tax_id_masked": {
+            "description": "The stored Tax ID, masked. Empty when none is stored.",
+            "example": "••••6789",
+            "type": "string"
+          },
+          "tax_id_type": {
+            "description": "eu_vat, gb_vat, ch_vat, no_vat, us_ein, ca_bn, au_abn, nz_gst, in_gst, sg_uen, jp_cn, kr_brn, ae_trn, sa_vat, br_cnpj, mx_rfc or other. Empty when no Tax ID is stored.",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "legal_name",
+          "address_line1",
+          "address_line2",
+          "city",
+          "region",
+          "postal_code",
+          "country",
+          "tax_id_type",
+          "tax_id_masked",
+          "has_tax_id",
+          "tax_id_enabled"
+        ],
+        "type": "object"
+      },
+      "CardDeposit": {
+        "description": "A started card top-up.",
+        "properties": {
+          "action_url": {
+            "description": "Hosted 3-D Secure page (status requires_action only).",
+            "type": "string"
+          },
+          "amount_cents": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "card_brand": {
+            "type": "string"
+          },
+          "card_last4": {
+            "type": "string"
+          },
+          "checkout_url": {
+            "description": "Stripe Checkout page (method checkout only).",
+            "type": "string"
+          },
+          "deposit_id": {
+            "description": "Stripe PaymentIntent id (saved card) or Checkout Session id (checkout).",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "saved_card",
+              "checkout"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "description": "succeeded = charged, credited by webhook within seconds. processing = the issuer has not settled yet. requires_action = open `action_url` to finish 3-D Secure. awaiting_payment = open `checkout_url` to pay.\n",
+            "enum": [
+              "succeeded",
+              "processing",
+              "requires_action",
+              "awaiting_payment"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "method",
+          "status",
+          "amount_cents"
+        ],
+        "type": "object"
+      },
+      "CardDepositStatus": {
+        "properties": {
+          "credited_cents": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "deposit_id": {
+            "type": "string"
+          },
+          "match": {
+            "description": "The deposit-match promotion's decision, once credited (absent when no promotion applied).",
+            "properties": {
+              "hold_until": {
+                "description": "Card deposits' match is held until this time before it can be released.",
+                "format": "date-time",
+                "type": "string"
+              },
+              "match_cents": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "status": {
+                "enum": [
+                  "matched",
+                  "partial",
+                  "not_matched"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "status",
+              "match_cents"
+            ],
+            "type": "object"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "credited"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "deposit_id",
+          "status"
+        ],
+        "type": "object"
+      },
       "ChatChoice": {
         "properties": {
           "finish_reason": {
@@ -1167,6 +1333,108 @@
           "model",
           "training_file",
           "method"
+        ],
+        "type": "object"
+      },
+      "CreateFunctionRequest": {
+        "properties": {
+          "name": {
+            "description": "A letter, then letters, digits, underscores or hyphens; 63 characters at most.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "CreateFunctionRunRequest": {
+        "properties": {
+          "input": {
+            "description": "The pickled (args, kwargs) of the call, base64-encoded. 4 MB at most before encoding.",
+            "type": "string"
+          },
+          "version_id": {
+            "description": "The version to run. Omit to run the function's current version.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "input"
+        ],
+        "type": "object"
+      },
+      "CreateFunctionVersionRequest": {
+        "properties": {
+          "bundle_bytes": {
+            "description": "Size of the pickled function. 64 MB at most.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "bundle_sha256": {
+            "description": "Lowercase hex SHA-256 of the pickled function.",
+            "type": "string"
+          },
+          "cloudpickle_version": {
+            "type": "string"
+          },
+          "content_hash": {
+            "description": "Lowercase hex SHA-256 over the code and everything declared about it.",
+            "type": "string"
+          },
+          "gpu": {
+            "description": "A GPU type from GET /gpu-types. Omit to use the cheapest GPU that fits.",
+            "type": "string"
+          },
+          "gpu_count": {
+            "default": 1,
+            "type": "integer"
+          },
+          "idle_timeout": {
+            "default": 300,
+            "description": "Seconds a machine stays ready after a call. 0 releases it at once.",
+            "type": "integer"
+          },
+          "max_concurrency": {
+            "default": 1,
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "type": "number"
+          },
+          "min_vram_gb": {
+            "description": "Least VRAM per GPU, used when gpu is omitted.",
+            "type": "integer"
+          },
+          "pip": {
+            "description": "Requirements to install on the machine. Options (anything starting with \"-\") are refused.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python_version": {
+            "description": "The Python minor version the function was pickled with, such as \"3.11\".",
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "timeout": {
+            "description": "Seconds one call may run. 1 to 86400.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "content_hash",
+          "bundle_sha256",
+          "bundle_bytes",
+          "python_version",
+          "cloudpickle_version",
+          "timeout"
         ],
         "type": "object"
       },
@@ -1684,6 +1952,498 @@
         ],
         "type": "object"
       },
+      "Function": {
+        "description": "A Python function registered with GPU.ai. The settings are those of its current version and are null until the first version is uploaded.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "current_version_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gpu": {
+            "description": "The GPU type, or null when the cheapest GPU that fits is used.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "idle_timeout": {
+            "description": "Seconds a machine stays ready after a call.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "last_run_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "machine_cost_24h_usd": {
+            "description": "What the function's machines were billed in the last 24 hours, including start-up and idle time that belongs to no run.",
+            "type": "number"
+          },
+          "max_concurrency": {
+            "description": "Most machines running calls at once.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "max_price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_vram_gb": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "pip": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python_version": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "replicas": {
+            "$ref": "#/components/schemas/FunctionReplicaCounts"
+          },
+          "run_cost_24h_usd": {
+            "description": "Sum of the cost of the runs created in the last 24 hours.",
+            "type": "number"
+          },
+          "runs_24h": {
+            "type": "integer"
+          },
+          "runs_queued": {
+            "type": "integer"
+          },
+          "status": {
+            "description": "`running`: a call is executing. `warm`: a machine is ready and waiting. `starting`: a machine is being started. `idle`: no machine, nothing is billed.",
+            "enum": [
+              "idle",
+              "starting",
+              "warm",
+              "running"
+            ],
+            "type": "string"
+          },
+          "timeout": {
+            "description": "Seconds one call may run before it is stopped.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "replicas",
+          "runs_queued",
+          "runs_24h",
+          "run_cost_24h_usd",
+          "machine_cost_24h_usd",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "FunctionList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Function"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "FunctionReplicaCounts": {
+        "description": "How many machines a function has in each state.",
+        "properties": {
+          "running": {
+            "description": "Machines executing a call.",
+            "type": "integer"
+          },
+          "starting": {
+            "description": "Machines being started.",
+            "type": "integer"
+          },
+          "warm": {
+            "description": "Machines ready and waiting for a call.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "starting",
+          "warm",
+          "running"
+        ],
+        "type": "object"
+      },
+      "FunctionRun": {
+        "description": "One call of a function.",
+        "properties": {
+          "cancel_requested": {
+            "type": "boolean"
+          },
+          "cold_start": {
+            "description": "True when the call waited for a machine to start, false when a warm machine took it.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "cost_usd": {
+            "description": "The time the call held its machine, at the machine's hourly price. Machine time between calls is billed too but belongs to no call.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "duration_ms": {
+            "description": "How long the function body ran.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "error": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FunctionRunError"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "finished_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "function_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "description": "The machine that ran the call. It is an instance of the organization.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "result": {
+            "description": "The pickled return value, base64-encoded. Present only on a succeeded run fetched with include_result=true.",
+            "type": "string"
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "description": "queued waits for a machine; setting_up means a machine took the call and is installing the function's Python and pip requirements; running means the function body is executing.",
+            "enum": [
+              "queued",
+              "setting_up",
+              "running",
+              "succeeded",
+              "failed",
+              "timed_out",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "version_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "function_id",
+          "version_id",
+          "status",
+          "cancel_requested",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "FunctionRunError": {
+        "properties": {
+          "message": {
+            "type": "string"
+          },
+          "traceback": {
+            "description": "The remote traceback, when the function raised.",
+            "type": "string"
+          },
+          "type": {
+            "description": "The class name of the exception the function raised, or the platform's reason: Timeout, Cancelled, LaunchError, MachineLost, DependencyError and so on.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "message"
+        ],
+        "type": "object"
+      },
+      "FunctionRunList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionRun"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor"
+        ],
+        "type": "object"
+      },
+      "FunctionRunLogChunk": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "cursor": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "data": {
+            "type": "string"
+          },
+          "stream": {
+            "description": "system carries messages from the platform, such as dependency installation.",
+            "enum": [
+              "stdout",
+              "stderr",
+              "system"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "cursor",
+          "stream",
+          "data",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "FunctionRunLogs": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/FunctionRunLogChunk"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "description": "Pass as `after` on the next read.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "run_status": {
+            "description": "The run's status at read time. Once it is final and data is empty, there is no more output.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data",
+          "next_cursor",
+          "run_status"
+        ],
+        "type": "object"
+      },
+      "FunctionUpload": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "method": {
+            "enum": [
+              "PUT"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Where to send the pickled function.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "method",
+          "expires_at"
+        ],
+        "type": "object"
+      },
+      "FunctionVersion": {
+        "properties": {
+          "cloudpickle_version": {
+            "type": "string"
+          },
+          "content_hash": {
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "function_id": {
+            "type": "string"
+          },
+          "gpu": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gpu_count": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "idle_timeout": {
+            "type": "integer"
+          },
+          "max_concurrency": {
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_vram_gb": {
+            "type": "integer"
+          },
+          "pip": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python_version": {
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "pending_upload",
+              "ready"
+            ],
+            "type": "string"
+          },
+          "timeout": {
+            "type": "integer"
+          },
+          "upload": {
+            "description": "Present while the bundle still has to be uploaded.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FunctionUpload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "function_id",
+          "status",
+          "content_hash",
+          "python_version",
+          "cloudpickle_version",
+          "pip",
+          "gpu_count",
+          "min_vram_gb",
+          "regions",
+          "timeout",
+          "idle_timeout",
+          "max_concurrency",
+          "created_at"
+        ],
+        "type": "object"
+      },
       "GPUType": {
         "properties": {
           "architecture": {
@@ -1996,6 +2756,68 @@
         "required": [
           "data",
           "next_cursor"
+        ],
+        "type": "object"
+      },
+      "Invoice": {
+        "properties": {
+          "amount_cents": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "currency": {
+            "example": "usd",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "issued_at": {
+            "description": "The payment date, which is also the invoice date.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "number": {
+            "example": "GPUAI-000123",
+            "type": "string"
+          },
+          "payment_method": {
+            "example": "Card",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "number",
+          "issued_at",
+          "amount_cents",
+          "currency",
+          "payment_method",
+          "description"
+        ],
+        "type": "object"
+      },
+      "InvoiceList": {
+        "properties": {
+          "has_more": {
+            "type": "boolean"
+          },
+          "invoices": {
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            },
+            "type": "array"
+          },
+          "next_cursor": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "invoices",
+          "has_more"
         ],
         "type": "object"
       },
@@ -2714,6 +3536,44 @@
         ],
         "type": "object"
       },
+      "SavedCard": {
+        "description": "A saved card. Brand, last 4 digits and expiry only; never a card number.",
+        "properties": {
+          "brand": {
+            "example": "visa",
+            "type": "string"
+          },
+          "exp_month": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "exp_year": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "example": "pm_1Pxyz",
+            "type": "string"
+          },
+          "is_default": {
+            "description": "The card auto-pay and an unqualified card top-up charge.",
+            "type": "boolean"
+          },
+          "last4": {
+            "example": "4242",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "brand",
+          "last4",
+          "exp_month",
+          "exp_year",
+          "is_default"
+        ],
+        "type": "object"
+      },
       "SpendingLimit": {
         "properties": {
           "auto_terminate_hours": {
@@ -3002,6 +3862,48 @@
           "object",
           "data"
         ],
+        "type": "object"
+      },
+      "UpdateBillingDetailsRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "address_line1": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "address_line2": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "city": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "country": {
+            "description": "ISO 3166-1 alpha-2 code; empty clears it.",
+            "type": "string"
+          },
+          "legal_name": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "postal_code": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "region": {
+            "maxLength": 100,
+            "type": "string"
+          },
+          "tax_id": {
+            "description": "Write only. Stored encrypted and never returned in full. Empty removes the stored Tax ID.",
+            "maxLength": 40,
+            "type": "string"
+          },
+          "tax_id_type": {
+            "type": "string"
+          }
+        },
         "type": "object"
       },
       "UpdateCommunityMachineRequest": {
@@ -3840,6 +4742,255 @@
         ]
       }
     },
+    "/billing/deposits/card": {
+      "post": {
+        "description": "Charges one of the organization's saved cards off-session and returns the Stripe PaymentIntent id as `deposit_id`. The balance is credited a few seconds later by GPU.ai's Stripe webhook, exactly like a deposit made on the website, including any deposit-match promotion and its card hold; poll `GET /billing/deposits/card/{id}` to see it land.\n\nRequires the `payments:write` scope, carried by `full_access` keys (what `gpu login` issues to an organization admin) and by an explicit `{\"payments\": \"write\"}` grant, never by `standard` or `read_only`. The key owner must also be an organization admin.\n\nLimits (server configuration, defaults shown): at most $10,000 per charge and $25,000 of saved-card charges per organization in any rolling 24 hours (declined or canceled charges do not count, and a charge left waiting for 3-D Secure stops counting after an hour). Saved-card charging can be switched off by an operator; it then answers `503 card-topup-disabled` and `POST /billing/deposits/card/checkout` still works.\n\nAn `Idempotency-Key` header is REQUIRED. Retrying with the same key replays the first attempt (here and at Stripe) instead of charging again; use a new key for each deliberate top-up. When the card issuer requires 3-D Secure, the response has `status: requires_action` and an `action_url` to open in a browser.\n",
+        "operationId": "createCardDeposit",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "amount_cents": {
+                    "description": "Amount in USD cents. Minimum 500 ($5.00).",
+                    "example": 5000,
+                    "format": "int64",
+                    "type": "integer"
+                  },
+                  "payment_method_id": {
+                    "description": "A saved card id from `GET /billing/payment-methods`. Omit to charge the default card (the one auto-pay uses).\n",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "amount_cents"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDeposit"
+                }
+              }
+            },
+            "description": "Charged, processing, or awaiting 3-D Secure."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`validation-error` — amount below $5.00. `idempotency-key-required` — no Idempotency-Key header."
+          },
+          "402": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`card-declined` — the issuer declined; nothing was charged."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`insufficient_scope` — the key lacks `payments:write`. `forbidden` — not an organization admin. `org-frozen` — the organization cannot add funds."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`no-saved-card` — no (matching) saved card; use `POST /billing/deposits/card/checkout` once to save one. `idempotency-key-used` — this key belongs to a top-up that already failed."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`card-topup-limit` — over the per-charge limit. `card-topup-daily-limit` — over the organization's rolling-24h limit; the detail says how much is left."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`card-topup-disabled` — saved-card charging is switched off; use Checkout."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Top up the balance by charging a saved card",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/billing/deposits/card/checkout": {
+      "post": {
+        "description": "Creates the same Stripe Checkout session as the dashboard's \"Add credits\" and returns its URL as `checkout_url`. Nothing is charged until the customer pays on that page; paying saves the card for later `POST /billing/deposits/card` top-ups. Requires the `billing:write` scope AND an organization admin. `deposit_id` is the Checkout Session id; poll `GET /billing/deposits/card/{id}`.\n",
+        "operationId": "createCardCheckout",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "amount_cents": {
+                    "description": "Amount in USD cents. Minimum 500 ($5.00).",
+                    "example": 5000,
+                    "format": "int64",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "amount_cents"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDeposit"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`validation-error` — amount below $5.00."
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`forbidden` — not an organization admin. `org-frozen` — the organization cannot add funds."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`card-topup-limit` — over the per-charge limit."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Top up the balance with Stripe Checkout",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/billing/deposits/card/{id}": {
+      "get": {
+        "description": "Reports whether a card top-up has been credited to the balance, and what any deposit-match promotion decided for it. Requires the `billing:read` scope. Reads GPU.ai's ledger, never Stripe: an id that belongs to another organization reads as `pending`.\n",
+        "operationId": "getCardDeposit",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardDepositStatus"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`validation-error` — not a card deposit id."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a card deposit's status",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "A card deposit id (`pi_...` or `cs_...`).",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "x-dark-launch": true
+    },
     "/billing/deposits/crypto": {
       "post": {
         "description": "Creates a deposit intent and returns the payment address and the exact token amount to send. Requires the `billing:write` scope; any member of the organization may add funds. Send the exact `pay_amount` of `asset` on `chain` and no other network — funds sent on a different network are not detected automatically. Returns 404 when stablecoin deposits are not enabled for this deployment.\n",
@@ -3987,6 +5138,252 @@
           }
         }
       ]
+    },
+    "/billing/details": {
+      "get": {
+        "description": "Returns the company name, address and Tax ID printed on the organization's invoices. Requires the `billing:read` scope. The Tax ID is stored encrypted and is only ever returned masked (`tax_id_masked`); the full value is printed on the organization's own invoice PDFs and nowhere else.\n",
+        "operationId": "getBillingDetails",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingDetails"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get billing details",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "patch": {
+        "description": "Updates the billing details printed on invoices. Requires the `billing:write` scope and an org admin's key. Omitted fields keep their value. `tax_id` replaces the stored Tax ID (and needs `tax_id_type` unless one is already stored); an empty `tax_id` removes it. Returns 503 `tax-id-unavailable` when this deployment cannot store a Tax ID.\n",
+        "operationId": "updateBillingDetails",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateBillingDetailsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingDetails"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "503": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Update billing details",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/billing/invoices": {
+      "get": {
+        "description": "Returns the organization's invoices, newest first. Every payment (card purchase, auto-pay top up, stablecoin deposit) has one; promotional credit does not. Requires the `billing:read` scope.\n",
+        "operationId": "listInvoices",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The `next_cursor` from the previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvoiceList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "400": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List invoices",
+        "tags": [
+          "Billing"
+        ]
+      }
+    },
+    "/billing/invoices/{id}/pdf": {
+      "get": {
+        "description": "Returns one invoice as a PDF, including the organization's billing details and full Tax ID. Requires the `billing:read` scope. An invoice belonging to another organization returns the same 404 as one that does not exist.\n",
+        "operationId": "downloadInvoicePdf",
+        "responses": {
+          "200": {
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The invoice PDF."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Download an invoice PDF",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The invoice id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/billing/payment-methods": {
+      "get": {
+        "description": "Returns the organization's saved cards as brand, last 4 digits and expiry. Card numbers are never returned. Requires the `payments:read` scope AND an organization admin (members get 403). An organization with no saved card returns an empty list. `saved_card_charge_allowed` says whether the calling key may charge these cards (`payments:write`).\n",
+        "operationId": "listPaymentMethods",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "daily_cap_cents": {
+                      "description": "The per-organization rolling-24h limit on saved-card charges, in cents.",
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "max_charge_cents": {
+                      "description": "The per-charge limit for API card top-ups, in cents.",
+                      "format": "int64",
+                      "type": "integer"
+                    },
+                    "payment_methods": {
+                      "items": {
+                        "$ref": "#/components/schemas/SavedCard"
+                      },
+                      "type": "array"
+                    },
+                    "saved_card_charge_allowed": {
+                      "description": "True when the calling key holds `payments:write`, i.e. `POST /billing/deposits/card` can succeed for it.\n",
+                      "type": "boolean"
+                    },
+                    "saved_card_charge_enabled": {
+                      "description": "False when saved-card charging is switched off right now; use `POST /billing/deposits/card/checkout` instead.\n",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "payment_methods",
+                    "saved_card_charge_allowed",
+                    "saved_card_charge_enabled",
+                    "max_charge_cents",
+                    "daily_cap_cents"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`forbidden` — the key owner is not an organization admin. `insufficient_scope` — the key lacks `payments:read`."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List saved cards",
+        "tags": [
+          "Billing"
+        ]
+      },
+      "x-dark-launch": true
     },
     "/billing/spending-limit": {
       "get": {
@@ -5189,6 +6586,649 @@
         "summary": "List fine-tuning job events (OpenAI-compatible)",
         "tags": [
           "FineTuning"
+        ]
+      }
+    },
+    "/functions": {
+      "get": {
+        "description": "Returns the organization's functions, newest first, each with the settings of its current version, what its machines are doing and what it cost in the last 24 hours. Requires the `functions:read` scope.",
+        "operationId": "listFunctions",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List functions",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "post": {
+        "description": "Returns the organization's function with this name, creating it on first use (201) or returning the existing one (200). Creating a function starts no machine and costs nothing. Requires the `functions:write` scope. The key must belong to a user, because the function's machines are launched as that user.",
+        "operationId": "createFunction",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFunctionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Function"
+                }
+              }
+            },
+            "description": "The function already existed."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Function"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get or create a function by name",
+        "tags": [
+          "Functions"
+        ]
+      }
+    },
+    "/functions/{id}": {
+      "delete": {
+        "description": "The function stops taking calls, its queued calls are cancelled, a call that is executing is stopped, and its machines are released, which ends their billing. The name can be reused afterwards. Requires the `functions:write` scope.",
+        "operationId": "deleteFunction",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a function",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "get": {
+        "description": "Requires the `functions:read` scope.",
+        "operationId": "getFunction",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Function"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a function",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/functions/{id}/runs": {
+      "get": {
+        "description": "Newest first. Requires the `functions:read` scope.",
+        "operationId": "listFunctionRuns",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CursorParam"
+          },
+          {
+            "$ref": "#/components/parameters/LimitParam"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionRunList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List a function's runs",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Queues one call and returns at once (202). A warm machine takes it within moments; otherwise a machine is started for it, up to the function's `max_concurrency`, beyond which calls wait in the queue. Read the run with `wait` for the outcome. Send an `Idempotency-Key` so a retried request does not run the function twice. Calling a function can start a billed machine: an organization with no balance is refused with 402, and the organization's spending limits apply when the machine is requested. Requires the `functions:write` scope.",
+        "operationId": "createFunctionRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFunctionRunRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionRun"
+                }
+              }
+            },
+            "description": "The call is queued."
+          },
+          "402": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The organization has no balance."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Call a function",
+        "tags": [
+          "Functions"
+        ]
+      }
+    },
+    "/functions/{id}/runs/{run_id}": {
+      "get": {
+        "description": "Returns one call. With `wait`, the request is held until the run finishes or the wait elapses, so a caller blocks on one request instead of polling. Requires the `functions:read` scope.",
+        "operationId": "getFunctionRun",
+        "parameters": [
+          {
+            "description": "Seconds to hold the request while the run is not finished.",
+            "in": "query",
+            "name": "wait",
+            "schema": {
+              "maximum": 30,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Include the pickled return value of a succeeded run.",
+            "in": "query",
+            "name": "include_result",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionRun"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a run",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The run id.",
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/functions/{id}/runs/{run_id}/cancel": {
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The run id.",
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "A queued run is cancelled at once; a running one is stopped on its machine within seconds, and the machine stays ready for the next call. Cancelling a finished run changes nothing and returns it, so the request is safe to repeat. Requires the `functions:write` scope.",
+        "operationId": "cancelFunctionRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionRun"
+                }
+              }
+            },
+            "description": "The run after the request."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Cancel a run",
+        "tags": [
+          "Functions"
+        ]
+      }
+    },
+    "/functions/{id}/runs/{run_id}/logs": {
+      "get": {
+        "description": "Returns the run's stdout and stderr after `after`, oldest first. With `wait`, the request is held until there is new output or the run finishes, which is how a client follows a live run. Up to 4 MB of output is kept per run. Requires the `functions:read` scope.",
+        "operationId": "getFunctionRunLogs",
+        "parameters": [
+          {
+            "description": "Return chunks after this cursor. Omit to read from the start.",
+            "in": "query",
+            "name": "after",
+            "schema": {
+              "format": "int64",
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 1000,
+              "maximum": 1000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Seconds to hold the request while there is nothing new.",
+            "in": "query",
+            "name": "wait",
+            "schema": {
+              "maximum": 30,
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionRunLogs"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Read a run's output",
+        "tags": [
+          "Functions"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The run id.",
+          "in": "path",
+          "name": "run_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/functions/{id}/versions": {
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Declares one version of the function: the digest of its pickled code, its Python dependencies and its settings. Idempotent on `content_hash`: the same hash returns the existing version (200) instead of a new one (201). A version whose code is not uploaded yet carries an `upload` URL; PUT the bundle there, then activate the version. Requires the `functions:write` scope.",
+        "operationId": "createFunctionVersion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFunctionVersionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionVersion"
+                }
+              }
+            },
+            "description": "A version with this content hash already existed."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionVersion"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Register a version of a function",
+        "tags": [
+          "Functions"
+        ]
+      }
+    },
+    "/functions/{id}/versions/{version_id}/activate": {
+      "parameters": [
+        {
+          "description": "The function id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "description": "The version id.",
+          "in": "path",
+          "name": "version_id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Reads the uploaded bundle back, checks it against the declared size and SHA-256 (422 on a mismatch or a missing upload), and makes the version the one the function's next call runs. Safe to repeat. Requires the `functions:write` scope.",
+        "operationId": "activateFunctionVersion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FunctionVersion"
+                }
+              }
+            },
+            "description": "The version is ready."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "No such function, version or run in the caller's organization."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Confirm a version's upload and make it current",
+        "tags": [
+          "Functions"
         ]
       }
     },
@@ -6895,6 +8935,10 @@
     {
       "description": "OpenAI-compatible fine-tuning: create and manage fine-tuning jobs and upload JSONL training files.",
       "name": "FineTuning"
+    },
+    {
+      "description": "Functions: run a Python function on a GPU by calling it. The gpuai_sdk.functions client (pip install gpuai-sdk) deploys and calls functions; these endpoints list functions and their runs, read run output, cancel runs and delete functions.",
+      "name": "Functions"
     },
     {
       "description": "Community Cloud supplier program: enroll as a supplier, register and manage your machines, and track your earnings.",
