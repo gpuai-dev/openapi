@@ -2735,6 +2735,15 @@
             "example": 8,
             "type": "integer"
           },
+          "boot_phase": {
+            "description": "How far a launch that is not ready yet has got. machine_requested means the machine was requested and no image download has been reported yet; pulling_image means the image is downloading or unpacking; setting_up means the container is up and the platform is finishing SSH and the GPU check. Present only while status is allocating or starting and the platform is following the boot; absent otherwise. Lets a client with a fixed timeout tell a launch that is still moving from one that is stuck.",
+            "enum": [
+              "machine_requested",
+              "pulling_image",
+              "setting_up"
+            ],
+            "type": "string"
+          },
           "connection": {
             "nullable": true,
             "properties": {
