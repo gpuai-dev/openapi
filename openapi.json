@@ -47,6 +47,14 @@
                   },
                   "type": "array"
                 },
+                "dedicated_ip": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/DedicatedIPRequest"
+                    }
+                  ],
+                  "description": "Attach a dedicated public IPv4 address owned by GPU.ai. Its inbound TCP ports (80 and 443 unless `ports` says otherwise) forward, raw and without TLS termination, to the same ports on the instance's loopback, so your own certificates work. Billed hourly while attached plus per GB of transfer in both directions (see GET /dedicated-ip). on_demand tier only (422 `validation_failed` otherwise). Returns 409 `dedicated_ip_limit` when the organization already holds its limit, 503 `dedicated_ip_unavailable` when no address is free, 422 `validation_failed` for ports outside the allowed set, and 400 `validation_failed` on deployments where the add-on is not enabled. A launch whose address cannot be attached fails its operation with `dedicated_ip_unavailable`. The address is released when the instance terminates or fails."
+                },
                 "disk_gb": {
                   "description": "Requested instance filesystem size in GB. Omit for the platform default (100 GB), which never narrows placement. Setting it is a hard requirement: placement narrows to capacity that can honor it (see `disk_configurable` on GET /v1/pricing), and a request no offering of the gpu_type can honor returns 422 `disk_unavailable` rather than launching with a different size. When the launch also pins an exact `offering_id`, a disk_gb larger than that offering's displayed `storage_gb` returns 422 `disk_exceeds_offering` rather than launching with a clamped filesystem. Disk beyond the included allowance (100 GB) is billed at the offering's `disk_price_per_gb_hour` (GET /v1/pricing), folded into the instance's single hourly rate. Bounds: at least 10, at most the platform ceiling (currently 1000) — outside them returns 422 `validation_failed`.",
                   "example": 200,
@@ -131,6 +139,14 @@
                 "registry_credential_id": {
                   "description": "Stored registry-credential id (POST /v1/registry-credentials) for pulling a PRIVATE `image`. The credential's registry must match the image's registry (422 otherwise); wrong logins fail the pre-flight with 422 `image_unavailable` before anything is provisioned. Requires `image`.",
                   "type": "string"
+                },
+                "secrets": {
+                  "description": "Names of organization secrets (POST /secrets) to deliver to the machine at boot as environment variables of the same names. Values are never in a response or a log. Returns 422 `validation_failed` when a name does not exist or secrets are not enabled on this deployment.",
+                  "items": {
+                    "type": "string"
+                  },
+                  "maxItems": 50,
+                  "type": "array"
                 },
                 "ssh_key_ids": {
                   "items": {
@@ -986,6 +1002,13 @@
             "description": "Canonical model id, e.g. \"gpuai/qwen2.5-7b-instruct\".",
             "type": "string"
           },
+          "parallel_tool_calls": {
+            "description": "Whether the model may call several tools in one turn. Passed through.",
+            "type": "boolean"
+          },
+          "response_format": {
+            "$ref": "#/components/schemas/ChatResponseFormat"
+          },
           "stream": {
             "default": false,
             "type": "boolean"
@@ -996,6 +1019,30 @@
           "temperature": {
             "nullable": true,
             "type": "number"
+          },
+          "tool_choice": {
+            "description": "\"auto\" (default), \"none\", \"required\", or a named function ({\"type\":\"function\",\"function\":{\"name\":\"...\"}}) that must be defined in tools.",
+            "oneOf": [
+              {
+                "enum": [
+                  "none",
+                  "auto",
+                  "required"
+                ],
+                "type": "string"
+              },
+              {
+                "$ref": "#/components/schemas/ChatNamedToolChoice"
+              }
+            ]
+          },
+          "tools": {
+            "description": "Functions the model may call (OpenAI shape). Only models whose /v1/models entry has supports_tools: true accept it; any other model returns 400 unsupported_parameter (param \"tools\").",
+            "items": {
+              "$ref": "#/components/schemas/ChatTool"
+            },
+            "maxItems": 128,
+            "type": "array"
           }
         },
         "required": [
@@ -1043,23 +1090,186 @@
         ],
         "type": "object"
       },
+      "ChatJSONSchemaFormat": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "schema": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "strict": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name",
+          "schema"
+        ],
+        "type": "object"
+      },
       "ChatMessage": {
         "properties": {
           "content": {
+            "description": "Message text. null on an assistant message that only calls tools. Requests may also send an array of content parts, passed through unchanged.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
             "type": "string"
           },
           "role": {
             "enum": [
               "system",
               "user",
-              "assistant"
+              "assistant",
+              "tool"
+            ],
+            "type": "string"
+          },
+          "tool_call_id": {
+            "description": "The tool call this message answers (required on role \"tool\").",
+            "type": "string"
+          },
+          "tool_calls": {
+            "description": "Tool calls made by the assistant (assistant messages only).",
+            "items": {
+              "$ref": "#/components/schemas/ChatToolCall"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "type": "object"
+      },
+      "ChatNamedToolChoice": {
+        "properties": {
+          "function": {
+            "properties": {
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "type": {
+            "enum": [
+              "function"
             ],
             "type": "string"
           }
         },
         "required": [
-          "role",
-          "content"
+          "type",
+          "function"
+        ],
+        "type": "object"
+      },
+      "ChatResponseFormat": {
+        "description": "Structured outputs. {\"type\":\"json_object\"} (JSON mode) or {\"type\":\"json_schema\",\"json_schema\":{...}}; \"text\" is the default. Only models whose /v1/models entry has supports_structured_outputs: true accept json_object / json_schema.",
+        "properties": {
+          "json_schema": {
+            "$ref": "#/components/schemas/ChatJSONSchemaFormat"
+          },
+          "type": {
+            "enum": [
+              "text",
+              "json_object",
+              "json_schema"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "type": "object"
+      },
+      "ChatTool": {
+        "properties": {
+          "function": {
+            "$ref": "#/components/schemas/ChatToolFunction"
+          },
+          "type": {
+            "enum": [
+              "function"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "function"
+        ],
+        "type": "object"
+      },
+      "ChatToolCall": {
+        "properties": {
+          "function": {
+            "properties": {
+              "arguments": {
+                "description": "JSON-encoded arguments object, as a string.",
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "arguments"
+            ],
+            "type": "object"
+          },
+          "id": {
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "function"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "type",
+          "function"
+        ],
+        "type": "object"
+      },
+      "ChatToolFunction": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "name": {
+            "pattern": "^[a-zA-Z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "description": "JSON Schema for the function arguments.",
+            "type": "object"
+          },
+          "strict": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
         ],
         "type": "object"
       },
@@ -1423,6 +1633,14 @@
             },
             "type": "array"
           },
+          "secrets": {
+            "description": "Names of organization secrets (POST /secrets) each run receives as environment variables of the same names, resolved per call so a rotated value reaches the next call. Values are never in a response or a log. Returns 422 `validation_failed` when a name does not exist or secrets are not enabled on this deployment.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
           "timeout": {
             "description": "Seconds one call may run. 1 to 86400.",
             "type": "integer"
@@ -1502,6 +1720,111 @@
           "amount_usd_cents",
           "created_at"
         ],
+        "type": "object"
+      },
+      "DedicatedIPOffer": {
+        "properties": {
+          "acceptable_use": {
+            "description": "The acceptable use policy for dedicated IPs.",
+            "type": "string"
+          },
+          "allowed_ports": {
+            "description": "Ports and port ranges a launch may forward, e.g. `80,443,1024-65535`.",
+            "example": "80,443",
+            "type": "string"
+          },
+          "available": {
+            "description": "Addresses free for a new launch right now.",
+            "type": "integer"
+          },
+          "default_ports": {
+            "description": "Ports forwarded when the request names none.",
+            "example": [
+              80,
+              443
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "hourly_fee": {
+            "description": "USD per hour while attached, from the instance becoming running until release.",
+            "example": 0.01,
+            "format": "double",
+            "type": "number"
+          },
+          "max_ports": {
+            "description": "Most ports one address may forward.",
+            "example": 8,
+            "type": "integer"
+          },
+          "org_in_use": {
+            "description": "Dedicated IPs the organization holds now.",
+            "type": "integer"
+          },
+          "org_limit": {
+            "description": "Most dedicated IPs the organization may hold at once.",
+            "example": 2,
+            "type": "integer"
+          },
+          "transfer_cap_gb": {
+            "description": "GB per attachment after which forwarding is suspended.",
+            "example": 500,
+            "format": "double",
+            "type": "number"
+          },
+          "transfer_included_gb": {
+            "description": "GB of transfer per attachment that is not charged.",
+            "example": 0,
+            "format": "double",
+            "type": "number"
+          },
+          "transfer_price_per_gb": {
+            "description": "USD per GB through the address, inbound and outbound.",
+            "example": 0.12,
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "enabled",
+          "allowed_ports",
+          "default_ports",
+          "max_ports",
+          "hourly_fee",
+          "transfer_price_per_gb",
+          "transfer_included_gb",
+          "transfer_cap_gb",
+          "org_limit",
+          "org_in_use",
+          "available",
+          "acceptable_use"
+        ],
+        "type": "object"
+      },
+      "DedicatedIPRequest": {
+        "description": "Requests a dedicated public IPv4 address for the instance. Send an empty object for the default ports (80 and 443).",
+        "properties": {
+          "ports": {
+            "description": "Inbound TCP ports to forward. Each must be in the deployment's allowed set (see GET /dedicated-ip). Port 22 and the gateway's own ports are never allowed; SSH stays on the instance's SSH command. Omit for the defaults.",
+            "example": [
+              80,
+              443
+            ],
+            "items": {
+              "maximum": 65535,
+              "minimum": 1,
+              "type": "integer"
+            },
+            "maxItems": 8,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
         "type": "object"
       },
       "Embedding": {
@@ -1620,6 +1943,269 @@
         "required": [
           "prompt_tokens",
           "total_tokens"
+        ],
+        "type": "object"
+      },
+      "Endpoint": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "hf_token_secret": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "type": "integer"
+          },
+          "last_error": {
+            "description": "Why the latest machine failed to start, until one becomes ready.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_request_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "machines": {
+            "description": "Recent machines, newest first. Returned by GET /v1/endpoints/{id} only.",
+            "items": {
+              "$ref": "#/components/schemas/EndpointMachine"
+            },
+            "type": "array"
+          },
+          "max_price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "max_replicas": {
+            "type": "integer"
+          },
+          "min_replicas": {
+            "type": "integer"
+          },
+          "model": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "replicas": {
+            "$ref": "#/components/schemas/EndpointReplicaCounts"
+          },
+          "request_count": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "status": {
+            "enum": [
+              "scaled_to_zero",
+              "starting",
+              "ready",
+              "failed",
+              "deleting"
+            ],
+            "type": "string"
+          },
+          "target_concurrency": {
+            "type": "integer"
+          },
+          "url": {
+            "description": "OpenAI-compatible base URL. Set an OpenAI client's base_url to it and use a GPU.ai API key.",
+            "example": "https://api.gpu.ai/v1/endpoints/3f1c2a7e-0000-4000-8000-000000000000/openai/v1",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "model",
+          "gpu_type",
+          "status",
+          "url",
+          "min_replicas",
+          "max_replicas",
+          "idle_timeout",
+          "target_concurrency",
+          "max_price_per_hour",
+          "hf_token_secret",
+          "replicas",
+          "request_count",
+          "last_request_at",
+          "last_error",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "EndpointCreate": {
+        "properties": {
+          "gpu_type": {
+            "description": "The GPU each machine runs on (see GET /v1/gpu-types). At least 24 GB of memory.",
+            "example": "rtx_4090",
+            "type": "string"
+          },
+          "hf_token_secret": {
+            "description": "Name of an organization secret holding a Hugging Face token, delivered as HF_TOKEN (for gated models).",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "description": "Seconds without a request before a machine is released. Default 300.",
+            "maximum": 86400,
+            "minimum": 60,
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "description": "Highest hourly price for a machine.",
+            "type": "number"
+          },
+          "max_replicas": {
+            "description": "Most machines the endpoint scales out to. Default 1.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_replicas": {
+            "description": "Machines kept running even with no requests. Default 0 (scale to zero).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "model": {
+            "description": "A Hugging Face model id.",
+            "example": "Qwen/Qwen2.5-0.5B-Instruct",
+            "type": "string"
+          },
+          "name": {
+            "description": "Lowercase letters, digits and hyphens, starting with a letter; 48 characters at most. Unique among the organization's endpoints.",
+            "example": "qwen-small",
+            "type": "string"
+          },
+          "target_concurrency": {
+            "description": "In-flight requests per machine before another starts. Default 16.",
+            "maximum": 256,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "model",
+          "gpu_type"
+        ],
+        "type": "object"
+      },
+      "EndpointList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Endpoint"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "EndpointMachine": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "instance_id": {
+            "description": "The instance the machine runs as (it appears in the instance list as ep-<name>-<id>).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ready_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "launching",
+              "ready",
+              "terminating",
+              "terminated"
+            ],
+            "type": "string"
+          },
+          "terminate_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "terminated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "instance_id",
+          "gpu_type",
+          "price_per_hour",
+          "ready_at",
+          "terminated_at",
+          "terminate_reason",
+          "created_at"
+        ],
+        "type": "object"
+      },
+      "EndpointReplicaCounts": {
+        "properties": {
+          "ready": {
+            "type": "integer"
+          },
+          "starting": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "starting",
+          "ready"
         ],
         "type": "object"
       },
@@ -2404,6 +2990,13 @@
             },
             "type": "array"
           },
+          "secrets": {
+            "description": "Names of the organization secrets each run receives. Empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "status": {
             "enum": [
               "pending_upload",
@@ -2440,6 +3033,7 @@
           "timeout",
           "idle_timeout",
           "max_concurrency",
+          "secrets",
           "created_at"
         ],
         "type": "object"
@@ -2779,6 +3373,9 @@
             "format": "date-time",
             "type": "string"
           },
+          "dedicated_ip": {
+            "$ref": "#/components/schemas/InstanceDedicatedIP"
+          },
           "disk_gb": {
             "description": "Instance filesystem size in GB that the platform configured for this launch. Present only where the placed capacity honors a configured disk size; absent means the machine's disk is provider-determined (its own flavor volume).",
             "type": "integer"
@@ -2874,6 +3471,70 @@
           "tier",
           "price_per_hour",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "InstanceDedicatedIP": {
+        "description": "The instance's dedicated public IPv4 add-on. Present only on instances launched with `dedicated_ip`, and only on deployments where the add-on is enabled.",
+        "properties": {
+          "address": {
+            "description": "The GPU.ai-owned public IPv4 address. Point your DNS A record here.",
+            "example": "203.0.113.7",
+            "type": "string"
+          },
+          "charged_usd": {
+            "description": "Total charged for this address so far (hourly fee plus transfer), in USD.",
+            "format": "double",
+            "type": "number"
+          },
+          "hourly_fee": {
+            "description": "USD per hour charged while the address is attached, locked at launch.",
+            "format": "double",
+            "type": "number"
+          },
+          "ports": {
+            "description": "Inbound TCP ports forwarded to the same port on the instance's loopback.",
+            "example": [
+              80,
+              443
+            ],
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "active means traffic is forwarded. suspended means forwarding has stopped (see suspend_reason), for example after the transfer cap was reached. released means the address was returned because the instance terminated or failed.",
+            "enum": [
+              "active",
+              "suspended",
+              "released"
+            ],
+            "type": "string"
+          },
+          "suspend_reason": {
+            "description": "Why forwarding is suspended, e.g. `transfer_cap`. Present only while suspended.",
+            "type": "string"
+          },
+          "transfer_gb": {
+            "description": "GB transferred through the address so far, both directions.",
+            "format": "double",
+            "type": "number"
+          },
+          "transfer_price_per_gb": {
+            "description": "USD per GB of traffic through the address, both directions, locked at launch.",
+            "format": "double",
+            "type": "number"
+          }
+        },
+        "required": [
+          "address",
+          "ports",
+          "status",
+          "hourly_fee",
+          "transfer_price_per_gb",
+          "transfer_gb",
+          "charged_usd"
         ],
         "type": "object"
       },
@@ -3194,6 +3855,13 @@
             "description": "Reruns after a memory failure, counted against `max_retries`.",
             "type": "integer"
           },
+          "secrets": {
+            "description": "Names of the organization secrets the job receives. Empty when none.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
           "sharing_mode": {
             "description": "How the GPU was shared during the last attempt. `mig` is a GPU slice of the job's own.",
             "enum": [
@@ -3258,6 +3926,7 @@
           "image",
           "command",
           "env_names",
+          "secrets",
           "gpu_type",
           "min_vram_gb",
           "memory_hint_mb",
@@ -3561,6 +4230,14 @@
             "maxLength": 120,
             "type": "string"
           },
+          "secrets": {
+            "description": "Names of organization secrets (POST /secrets) the job's container receives as environment variables of the same names. Values are never in a response or a log. Returns 422 `validation_failed` when a name does not exist or secrets are not enabled on this deployment.",
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "type": "array"
+          },
           "timeout_seconds": {
             "default": 3600,
             "description": "The job is stopped and fails after running this long.",
@@ -3572,6 +4249,39 @@
         "required": [
           "image",
           "command"
+        ],
+        "type": "object"
+      },
+      "JobGpuTypes": {
+        "properties": {
+          "complete": {
+            "description": "True when the list is authoritative and any other gpu_type is refused at submit.",
+            "type": "boolean"
+          },
+          "data": {
+            "items": {
+              "properties": {
+                "gpu_type": {
+                  "description": "The GPU model, as `gpu_type` in `POST /jobs`.",
+                  "type": "string"
+                },
+                "vram_gb": {
+                  "description": "The GPU's memory in GB.",
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "gpu_type",
+                "vram_gb"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data",
+          "complete"
         ],
         "type": "object"
       },
@@ -3971,6 +4681,14 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "supports_structured_outputs": {
+            "description": "Chat models only. True when POST /v1/chat/completions accepts response_format json_object / json_schema for this model and tier.",
+            "type": "boolean"
+          },
+          "supports_tools": {
+            "description": "Chat models only. True when POST /v1/chat/completions accepts tools / tool_choice / parallel_tool_calls for this model and tier.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4287,6 +5005,8 @@
               "model_too_large",
               "gpu_vram_too_small",
               "price_changed",
+              "dedicated_ip_limit",
+              "dedicated_ip_unavailable",
               "insufficient_balance",
               "quota_exceeded",
               "rate_limited",
@@ -4464,6 +5184,173 @@
           "exp_month",
           "exp_year",
           "is_default"
+        ],
+        "type": "object"
+      },
+      "Secret": {
+        "description": "An organization secret's metadata. There is no value field: values are write-only and never returned.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "last_used_at": {
+            "description": "When the value was last delivered to a machine, or null.",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The secret's name, which is also the environment variable it is delivered as.",
+            "example": "HF_TOKEN",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "version": {
+            "description": "How many times the value has been written. Starts at 1.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "description",
+          "version",
+          "created_at",
+          "updated_at",
+          "last_used_at"
+        ],
+        "type": "object"
+      },
+      "SecretCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "maxLength": 256,
+            "type": "string"
+          },
+          "name": {
+            "example": "HF_TOKEN",
+            "maxLength": 128,
+            "type": "string"
+          },
+          "value": {
+            "description": "The secret value. Write-only; never returned.",
+            "maxLength": 32768,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "SecretImportItem": {
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "SecretImportRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "overwrite": {
+            "default": false,
+            "description": "Replace the values of secrets that already exist. False leaves them untouched.",
+            "type": "boolean"
+          },
+          "secrets": {
+            "items": {
+              "$ref": "#/components/schemas/SecretImportItem"
+            },
+            "maxItems": 200,
+            "type": "array"
+          }
+        },
+        "required": [
+          "secrets"
+        ],
+        "type": "object"
+      },
+      "SecretImportResult": {
+        "properties": {
+          "created": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "description": "Names that already existed and were left untouched (overwrite false).",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "updated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "created",
+          "updated",
+          "skipped"
+        ],
+        "type": "object"
+      },
+      "SecretList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Secret"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "data"
+        ],
+        "type": "object"
+      },
+      "SecretPut": {
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "description": "Omit to keep the current description.",
+            "maxLength": 256,
+            "type": "string"
+          },
+          "value": {
+            "description": "The secret value. Write-only; never returned.",
+            "maxLength": 32768,
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "value"
         ],
         "type": "object"
       },
@@ -6988,6 +7875,38 @@
         ]
       }
     },
+    "/dedicated-ip": {
+      "get": {
+        "description": "Describes the dedicated public IPv4 add-on for instances and the caller's usage of it. A dedicated IP is a GPU.ai-owned public address (never the supplier's) that forwards the chosen inbound TCP ports, raw and without TLS termination, to the same ports on the instance's loopback. Request one at launch with the `dedicated_ip` field on POST /instances.\n\nThe response carries the hourly fee charged while the address is attached, the transfer price per GB (counted in both directions), the transfer cap per attachment after which forwarding is suspended, the ports a launch may forward, the organization's limit and how many it holds, how many addresses are free right now, and the acceptable use policy. Requires the `instances:read` scope. Returns 404 when the add-on is not enabled for this deployment.\n",
+        "operationId": "getDedicatedIpOffer",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DedicatedIPOffer"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "description": "The dedicated IP add-on is not enabled for this deployment."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get the dedicated public IP add-on offer",
+        "tags": [
+          "Instances"
+        ]
+      },
+      "x-dark-launch": true
+    },
     "/embeddings": {
       "post": {
         "description": "Synchronous text embeddings. Accepts a single string or an array of up to 2048 strings, bounded so the response stays under 64 MiB (about 680 inputs at 4096 dimensions; fewer at a larger `dimensions` value) — over-limit requests are rejected with 400 before any processing. Returns one float vector per input, in request order. Billed on the upstream's reported prompt tokens at the model's listed input rate, rounded up to the next whole cent per request; an embeddings call emits no completion tokens, so `usage` carries `prompt_tokens` and `total_tokens` only. `encoding_format` accepts only `float` — a value of `base64` is rejected with `unsupported_parameter`. A chat model id on this route returns 404 `model_not_found`: the id is valid, but not on this surface.",
@@ -7057,6 +7976,351 @@
           "Inference"
         ]
       }
+    },
+    "/endpoints": {
+      "get": {
+        "description": "Lists the organization's live model endpoints with their status, URL and machine counts. Requires the `functions:read` scope.",
+        "operationId": "listEndpoints",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EndpointList"
+                }
+              }
+            },
+            "description": "The organization's endpoints."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List model endpoints",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "post": {
+        "description": "Creates an OpenAI-compatible endpoint serving a Hugging Face model with vLLM on the chosen GPU type. Nothing starts until the first request arrives, unless `min_replicas` keeps machines warm. Each machine is billed for the time it exists, like an instance, through the same balance. For a gated model, store a Hugging Face token as a secret and name it in `hf_token_secret`; it reaches the machines as HF_TOKEN. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, and 409 `limit_reached` at the per-organization cap. Requires the `functions:write` scope.",
+        "operationId": "createEndpoint",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EndpointCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Endpoint"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a model endpoint",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/endpoints/{id}": {
+      "delete": {
+        "description": "Deletes the endpoint. Its machines are released within seconds and stop billing when terminated. Requires the `functions:write` scope.",
+        "operationId": "deleteEndpoint",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a model endpoint",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "get": {
+        "description": "Returns one endpoint with its recent machines (newest first), each with its price, ready and terminated times, and why it was released. Requires the `functions:read` scope.",
+        "operationId": "getEndpoint",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Endpoint"
+                }
+              }
+            },
+            "description": "The endpoint."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a model endpoint",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The endpoint's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "x-dark-launch": true
+    },
+    "/endpoints/{id}/openai/v1/chat/completions": {
+      "parameters": [
+        {
+          "description": "The endpoint's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "The OpenAI chat completions route of one endpoint: point an OpenAI client's base_url at the endpoint's `url` and use a GPU.ai API key with the `functions:write` scope. The request's `model` is replaced with the endpoint's model, so any value works. Set `\"stream\": true` for Server-Sent Events, passed through as vLLM produces them. When no machine is ready the request waits while one starts (a cold start takes minutes: machine, image and model download); if none is ready in time the answer is 503 `endpoint_starting` with Retry-After. 402 `insufficient_quota` when the balance is empty. Errors use the OpenAI error envelope.",
+        "operationId": "createEndpointChatCompletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCompletionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCompletionResponse"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "description": "Server-Sent Events stream of chat completion chunks, terminated by `data: [DONE]`.",
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "application/json for non-streaming requests; text/event-stream\nwhen stream=true.\n"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          }
+        },
+        "summary": "Chat completion on a model endpoint (OpenAI-compatible)",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/endpoints/{id}/openai/v1/completions": {
+      "parameters": [
+        {
+          "description": "The endpoint's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "The OpenAI completions route of one endpoint, with the same auth, model rewrite, streaming, cold start and error behavior as chat completions.",
+        "operationId": "createEndpointCompletion",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "An OpenAI completions request (prompt, max_tokens, stream, ...).",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "application/json for non-streaming requests; text/event-stream\nwhen stream=true.\n"
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          }
+        },
+        "summary": "Text completion on a model endpoint (OpenAI-compatible)",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/endpoints/{id}/openai/v1/models": {
+      "get": {
+        "description": "The OpenAI models route of one endpoint: the one model it serves. Can trigger a cold start like any other request.",
+        "operationId": "listEndpointModels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object"
+                }
+              }
+            },
+            "description": "An OpenAI model list."
+          },
+          "400": {
+            "$ref": "#/components/responses/OpenAIBadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/OpenAIUnauthorized"
+          },
+          "402": {
+            "$ref": "#/components/responses/OpenAIPaymentRequired"
+          },
+          "403": {
+            "$ref": "#/components/responses/OpenAIForbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/OpenAINotFound"
+          },
+          "429": {
+            "$ref": "#/components/responses/OpenAIRateLimited"
+          },
+          "502": {
+            "$ref": "#/components/responses/OpenAIInternalError"
+          },
+          "503": {
+            "$ref": "#/components/responses/OpenAIUpstreamUnavailable"
+          }
+        },
+        "summary": "List the model an endpoint serves (OpenAI-compatible)",
+        "tags": [
+          "Endpoints"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The endpoint's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "x-dark-launch": true
     },
     "/environments": {
       "get": {
@@ -8291,6 +9555,7 @@
         ]
       },
       "post": {
+        "description": "Running a one-off script or batch work? Submit it as a job instead (POST /jobs): the machine is started for it and shut down a few minutes after it finishes, so nothing bills after the work is done.",
         "operationId": "createInstance",
         "parameters": [
           {
@@ -8311,6 +9576,12 @@
             },
             "description": "Accepted; long-running operation",
             "headers": {
+              "GPUAI-Hint": {
+                "description": "Advisory only, and absent on most launches. Sent when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends. It never changes the launch.",
+                "schema": {
+                  "type": "string"
+                }
+              },
               "Operation-Id": {
                 "description": "Use GET /operations/{id} to poll",
                 "schema": {
@@ -8660,6 +9931,35 @@
           }
         },
         "summary": "Submit a job",
+        "tags": [
+          "Jobs"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/jobs/gpu-types": {
+      "get": {
+        "description": "Returns the GPU types the suppliers that run jobs rent as a one-GPU machine, smallest memory first. A type is listed when one of them offered it in the last 7 days, in stock or not. When `complete` is true, `POST /jobs` refuses any other `gpu_type` with a 422 (and a `min_vram_gb` larger than every listed type), instead of queueing a job that could never start. When `complete` is false the list may be partial or empty, and a job for any known GPU model is accepted and waits for a machine. Requires the `instances:read` scope.\n",
+        "operationId": "listJobGpuTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobGpuTypes"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List the GPU types a job can run on",
         "tags": [
           "Jobs"
         ]
@@ -9154,6 +10454,66 @@
         ]
       }
     },
+    "/operations/{id}/cancel": {
+      "post": {
+        "description": "Cancels an instance.create operation that is still pending or in_progress and has no resource_id yet. Nothing is created or billed for a cancelled launch; if the supplier finishes creating the machine after the cancel, it is terminated right away. Cancelling an operation that already finished returns it unchanged, so the call is safe to repeat. Scoped like GET /operations/{id}: only the key that started the operation can cancel it. Requires the `instances:write` scope.",
+        "operationId": "cancelOperation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operation"
+                }
+              }
+            },
+            "description": "The operation, `cancelled` unless it had already finished."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`not_found`. No operation with this id for this key."
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "`validation_failed`. The operation is not a launch, or the launch already created its instance. The detail names the instance to delete instead."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Cancel a launch that has not created its instance yet",
+        "tags": [
+          "Operations"
+        ]
+      },
+      "x-dark-launch": true
+    },
     "/pricing": {
       "get": {
         "description": "Lists every distinct offer (gpu_type, gpu_count, region, tier, price, boot class). Customer-identical offers are merged with availability summed. Offers with zero availability are omitted unless include_unavailable=true.",
@@ -9347,6 +10707,221 @@
           "RegistryCredentials"
         ]
       }
+    },
+    "/secrets": {
+      "get": {
+        "description": "Lists the organization's secrets by name with their metadata. Values are never returned by any read. Requires the `instances:read` scope. Returns 503 `secrets_unavailable` when secrets are switched on but no encryption key is configured, and 404 when the feature is off.",
+        "operationId": "listSecrets",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretList"
+                }
+              }
+            },
+            "description": "The organization's secrets (no values)."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List secrets",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "post": {
+        "description": "Stores a new secret. The value crosses the wire on create, update and import only, is envelope encrypted at rest, and is never returned. The name is the environment variable the value is delivered as: a letter or underscore, then letters, digits and underscores, 128 characters at most; names starting with GPUAI_ and names the machine itself needs (PATH, HOME, LD_PRELOAD and similar) are refused. Values are at most 32 KB. Returns 409 `name_taken` when the name exists (use PUT to replace a value) and 422 `validation_failed` for a bad name or value. Every create, update, delete and use is recorded in the organization's audit log, without the value. Requires the `instances:write` scope.",
+        "operationId": "createSecret",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            },
+            "description": "Created (metadata only; no value)."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a secret",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/secrets/import": {
+      "post": {
+        "description": "Creates or updates many secrets at once, for example the output of `infisical export` or a .env file parsed by the client (the `gpu secrets import` command parses dotenv and Infisical JSON locally and sends this request). Every item is validated before any is written. With `overwrite` false, existing secrets are left untouched and listed under `skipped`. At most 200 items. Requires the `instances:write` scope.",
+        "operationId": "importSecrets",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretImportRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SecretImportResult"
+                }
+              }
+            },
+            "description": "What the import did, by name."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Import secrets",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/secrets/{name}": {
+      "delete": {
+        "description": "Deletes the secret. Machines already running keep the value they were given; nothing started later can receive it, and a function version or job that still names it fails its next run. Requires the `instances:write` scope.",
+        "operationId": "deleteSecret",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a secret",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "get": {
+        "description": "Returns one secret's metadata. The value is never returned. Requires the `instances:read` scope. 404 `not_found` when the organization has no secret with this name.",
+        "operationId": "getSecret",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            },
+            "description": "The secret (no value)."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a secret's metadata",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The secret's name.",
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "description": "Sets the secret's value, creating the secret when it does not exist (201) or replacing the value and bumping its version when it does (200). Omit `description` to keep the current one. Machines already running keep the value they were given; launches and calls from now on get the new one. Requires the `instances:write` scope.",
+        "operationId": "putSecret",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SecretPut"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            },
+            "description": "Value replaced (metadata only)."
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Secret"
+                }
+              }
+            },
+            "description": "Created (metadata only)."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create or replace a secret",
+        "tags": [
+          "Secrets"
+        ]
+      },
+      "x-dark-launch": true
     },
     "/ssh-keys": {
       "get": {
@@ -10267,6 +11842,14 @@
     {
       "description": "GPU instances: launch, list, inspect, update, and terminate. Mutating calls return an async operation to poll for completion.",
       "name": "Instances"
+    },
+    {
+      "description": "Model endpoints: an open model (a Hugging Face model id) served by vLLM on a GPU type you pick, behind a stable OpenAI-compatible URL. Machines start on the first request, scale with load up to max_replicas, and are released after the idle timeout. Machine time is billed like instances.",
+      "name": "Endpoints"
+    },
+    {
+      "description": "Organization secrets: values stored once, encrypted at rest, and delivered to instances, functions and jobs as environment variables. Values are write-only; no read ever returns one.",
+      "name": "Secrets"
     },
     {
       "description": "Async operation tracking. Instance launches and terminations return an operation id; poll it here until the operation reaches a terminal state.",
