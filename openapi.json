@@ -1,5 +1,13 @@
 {
   "components": {
+    "headers": {
+      "BalanceWarning": {
+        "description": "Advisory only, and absent while the balance is healthy. Sent on every authenticated response (the OpenAI-compatible inference endpoints excepted) while the organization has machines running, auto-pay is off or its last charge failed, and the balance covers less than the low-balance threshold (2 hours by default) at the current usage. Plain text, for example \"Your balance covers about 1.5 hours at your current usage. Machines stop when it reaches $0. Add funds or turn on auto-pay: https://gpu.ai/cloud/billing?tab=credits&autopay=1\". It never changes the request. The same condition sends the balance.low webhook.",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
     "parameters": {
       "CursorParam": {
         "in": "query",
@@ -24,6 +32,19 @@
           "maximum": 200,
           "minimum": 1,
           "type": "integer"
+        }
+      },
+      "ZeroDataRetentionHeader": {
+        "description": "Send `true` to require zero data retention for this request even when the org setting is off. It can only tighten routing: `false` never relaxes an org with zero data retention on. Responses routed under zero data retention echo this header with `true`. A model without a zero-data-retention host returns 400 `zero_data_retention_unavailable`; a value other than true/false returns 400 `invalid_header`.",
+        "in": "header",
+        "name": "X-GPUAI-Zero-Data-Retention",
+        "required": false,
+        "schema": {
+          "enum": [
+            "true",
+            "false"
+          ],
+          "type": "string"
         }
       }
     },
@@ -246,7 +267,7 @@
             }
           }
         },
-        "description": "Invalid request (OpenAI error envelope)."
+        "description": "Invalid request (OpenAI error envelope). On inference routes this includes `zero_data_retention_unavailable` when zero data retention is required and the model has no zero-data-retention host."
       },
       "OpenAIForbidden": {
         "content": {
@@ -395,7 +416,7 @@
             }
           }
         },
-        "description": "Upstream provider unavailable (OpenAI error envelope). Retry-After header may indicate seconds to wait.",
+        "description": "Upstream provider unavailable (OpenAI error envelope). Retry-After header may indicate seconds to wait. Code `data_retention_check_failed` means the org zero data retention setting could not be read, so the request was not sent; retry shortly.",
         "headers": {
           "Retry-After": {
             "description": "Seconds the client should wait before retrying.",
@@ -785,6 +806,13 @@
             "format": "int64",
             "type": [
               "integer",
+              "null"
+            ]
+          },
+          "runway_hours": {
+            "description": "How many hours the balance lasts at the current usage: the balance divided by `burn_cents_per_hour` plus serverless inference spend over the last hour, rounded to 2 places. `null` when nothing is running or the burn rate could not be determined; 0 when the balance is at or below $0 while burning. Machines stop when the balance reaches $0.",
+            "type": [
+              "number",
               "null"
             ]
           }
@@ -1273,6 +1301,473 @@
         ],
         "type": "object"
       },
+      "Cluster": {
+        "properties": {
+          "cost": {
+            "description": "What the cluster's machines have cost so far, in USD.",
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "deleted_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "demand_gpus": {
+            "description": "GPU work waiting for a machine.",
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "gpus_per_node": {
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "type": "integer"
+          },
+          "kubernetes_nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterK8sNode"
+            },
+            "type": "array"
+          },
+          "kubernetes_url": {
+            "type": "string"
+          },
+          "last_error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "machines": {
+            "description": "Returned by GET /clusters/{id} only.",
+            "items": {
+              "$ref": "#/components/schemas/ClusterMachine"
+            },
+            "type": "array"
+          },
+          "max_nodes": {
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "min_nodes": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "nodes": {
+            "$ref": "#/components/schemas/ClusterNodeCounts"
+          },
+          "placement": {
+            "enum": [
+              "cheapest",
+              "spread"
+            ],
+            "type": "string"
+          },
+          "price_per_hour": {
+            "description": "What the cluster's machines cost now, per hour (GET of one cluster).",
+            "type": "number"
+          },
+          "queues": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterQueue"
+            },
+            "type": "array"
+          },
+          "ray_address": {
+            "example": "https://api.gpu.ai/v1/clusters/3f1c2a7e-0000-4000-8000-000000000000/ray",
+            "type": "string"
+          },
+          "regions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "report": {
+            "$ref": "#/components/schemas/ClusterReport"
+          },
+          "status": {
+            "enum": [
+              "provisioning",
+              "ready",
+              "scaling",
+              "failed",
+              "deleting",
+              "deleted"
+            ],
+            "type": "string"
+          },
+          "workloads": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterWorkload"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "gpu_type": {
+            "description": "GPU type of every machine; see GET /gpu-types.",
+            "example": "h100_sxm",
+            "type": "string"
+          },
+          "gpus_per_node": {
+            "default": 1,
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "idle_timeout": {
+            "default": 600,
+            "description": "Seconds a machine may run no GPU work before it is removed (down to min_nodes).",
+            "minimum": 60,
+            "type": "integer"
+          },
+          "max_nodes": {
+            "description": "Most machines under load. Defaults to min_nodes.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "description": "Highest hourly price per machine, in USD.",
+            "type": "number"
+          },
+          "min_nodes": {
+            "default": 2,
+            "description": "Machines kept at all times.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Lowercase letters, digits and hyphens, starting with a letter (32 at most).",
+            "example": "train",
+            "type": "string"
+          },
+          "placement": {
+            "default": "cheapest",
+            "description": "\"spread\" places machines on different suppliers where it can.",
+            "enum": [
+              "cheapest",
+              "spread"
+            ],
+            "type": "string"
+          },
+          "regions": {
+            "description": "Canonical regions to place machines in. Empty means the cheapest suitable listing anywhere.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "gpu_type"
+        ],
+        "type": "object"
+      },
+      "ClusterK8sNode": {
+        "properties": {
+          "gpu_pods": {
+            "type": "integer"
+          },
+          "gpus": {
+            "type": "integer"
+          },
+          "gpus_in_use": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Cluster"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterMachine": {
+        "properties": {
+          "address": {
+            "description": "The machine's address on the cluster network.",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpu_count": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "gpu_type": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idle_since": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "instance_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "The Kubernetes node name.",
+            "type": "string"
+          },
+          "price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ready_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "role": {
+            "enum": [
+              "head",
+              "worker"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "starting",
+              "joining",
+              "ready",
+              "draining",
+              "terminating",
+              "terminated"
+            ],
+            "type": "string"
+          },
+          "terminate_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "terminated_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ClusterNodeCounts": {
+        "properties": {
+          "draining": {
+            "type": "integer"
+          },
+          "joining": {
+            "type": "integer"
+          },
+          "ready": {
+            "type": "integer"
+          },
+          "starting": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterQueue": {
+        "properties": {
+          "allocated_gpus": {
+            "type": "integer"
+          },
+          "gpu_limit": {
+            "description": "Most GPUs the queue may use (-1 no limit).",
+            "type": "integer"
+          },
+          "gpu_quota": {
+            "description": "GPUs the queue is guaranteed (-1 none).",
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pending_gpus": {
+            "type": "integer"
+          },
+          "priority": {
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterQueueList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/ClusterQueue"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterQueueSet": {
+        "additionalProperties": false,
+        "properties": {
+          "gpu_limit": {
+            "default": -1,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "gpu_quota": {
+            "default": -1,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "priority": {
+            "default": 100,
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterReport": {
+        "properties": {
+          "agent_error": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "ray_ready": {
+            "type": "boolean"
+          },
+          "reported_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "ClusterResize": {
+        "additionalProperties": false,
+        "properties": {
+          "idle_timeout": {
+            "minimum": 60,
+            "type": "integer"
+          },
+          "max_nodes": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "min_nodes": {
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ClusterWorkload": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "gpus": {
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "namespace": {
+            "type": "string"
+          },
+          "node": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string"
+          },
+          "queue": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "waiting",
+              "waiting_for_gpus",
+              "held_by_quota",
+              "too_large",
+              "succeeded",
+              "failed"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "CommunityEarnings": {
         "properties": {
           "accrued_cents": {
@@ -1719,6 +2214,30 @@
           "asset",
           "amount_usd_cents",
           "created_at"
+        ],
+        "type": "object"
+      },
+      "DataRetention": {
+        "properties": {
+          "object": {
+            "enum": [
+              "organization.data_retention"
+            ],
+            "type": "string"
+          },
+          "updated_at": {
+            "description": "When the setting last changed; absent if it never has.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "zero_data_retention": {
+            "description": "True when the org's inference requests route only to zero-data-retention model hosts.",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "object",
+          "zero_data_retention"
         ],
         "type": "object"
       },
@@ -3862,6 +4381,9 @@
             },
             "type": "array"
           },
+          "sharing_hint": {
+            "$ref": "#/components/schemas/JobSharingHint"
+          },
           "sharing_mode": {
             "description": "How the GPU was shared during the last attempt. `mig` is a GPU slice of the job's own.",
             "enum": [
@@ -4261,9 +4783,28 @@
           "data": {
             "items": {
               "properties": {
+                "available_now": {
+                  "description": "True when a supplier that runs jobs had a one-GPU machine of this type to rent at the last catalog read, a few minutes ago. False means it was only seen earlier: a job for it is accepted and waits for one.\n",
+                  "type": "boolean"
+                },
                 "gpu_type": {
                   "description": "The GPU model, as `gpu_type` in `POST /jobs`.",
                   "type": "string"
+                },
+                "last_seen_at": {
+                  "description": "When a supplier that runs jobs last listed the type.",
+                  "format": "date-time",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "price_per_gpu_hour": {
+                  "description": "Cheapest retail price in USD per GPU-hour of such a machine at that read. Null when not available now.\n",
+                  "type": [
+                    "number",
+                    "null"
+                  ]
                 },
                 "vram_gb": {
                   "description": "The GPU's memory in GB.",
@@ -4272,7 +4813,10 @@
               },
               "required": [
                 "gpu_type",
-                "vram_gb"
+                "vram_gb",
+                "available_now",
+                "price_per_gpu_hour",
+                "last_seen_at"
               ],
               "type": "object"
             },
@@ -4352,6 +4896,29 @@
         ],
         "type": "object"
       },
+      "JobSharingHint": {
+        "description": "Advisory only, and present only when it applies. A job carries it when it succeeded with a whole GPU it did not allow to be shared, ran at least a minute with no out-of-memory exit or eviction, and its peak GPU memory, measured from per-process accounting (`memory_source` `process`), was at most half of the GPU's memory. Sharing stays opt-in; the hint never changes how a job is placed.\n",
+        "properties": {
+          "gpu_memory_total_mb": {
+            "description": "Total memory of the GPU the job held, in MiB.",
+            "type": "integer"
+          },
+          "message": {
+            "description": "A short sentence to show the user, such as \"This job used 5.1 GB of its 48 GB GPU. Set allow_sharing and allow_restart to true to let it share a GPU with your other jobs and pay only for its share.\" It names only the flags the job did not already set.\n",
+            "type": "string"
+          },
+          "peak_memory_mb": {
+            "description": "The job's measured peak GPU memory, in MiB.",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "message",
+          "peak_memory_mb",
+          "gpu_memory_total_mb"
+        ],
+        "type": "object"
+      },
       "JobTelemetry": {
         "properties": {
           "gpu_memory_total_mb": {
@@ -4421,6 +4988,56 @@
           "memory_mb",
           "gpu_memory_mb",
           "gpu_util_pct"
+        ],
+        "type": "object"
+      },
+      "JobTrial": {
+        "properties": {
+          "cap_cents": {
+            "description": "The most the trial credits one organization, in cents.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "credited_cents": {
+            "description": "Trial credit added to the balance so far, in cents.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "eligible": {
+            "description": "True while this organization's jobs are credited back as they run.",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "False when this deployment runs no trial. Every other field is then zero.",
+            "type": "boolean"
+          },
+          "message": {
+            "description": "The line to show the user, e.g. \"Your first jobs are free, up to $10.\" Omitted when not eligible.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the organization is not eligible. Omitted when eligible.",
+            "enum": [
+              "used",
+              "existing_user",
+              "internal",
+              "frozen",
+              "linked_account"
+            ],
+            "type": "string"
+          },
+          "remaining_cents": {
+            "description": "How much more job cost the trial covers, in cents.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "eligible",
+          "cap_cents",
+          "credited_cents",
+          "remaining_cents"
         ],
         "type": "object"
       },
@@ -4689,6 +5306,10 @@
           "supports_tools": {
             "description": "Chat models only. True when POST /v1/chat/completions accepts tools / tool_choice / parallel_tool_calls for this model and tier.",
             "type": "boolean"
+          },
+          "zero_data_retention": {
+            "description": "True when this model and tier can be served with zero data retention: at least one model host keeps no prompt or output content. Only these models are callable by an org with zero data retention on, or with the X-GPUAI-Zero-Data-Retention header. Always false for video.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4746,6 +5367,43 @@
         },
         "type": "object"
       },
+      "OfferingAlternative": {
+        "description": "A live catalog row a launch whose pinned offering was gone could take instead. Same fields and meaning as the matching GET /pricing row.",
+        "properties": {
+          "available": {
+            "type": "integer"
+          },
+          "gpu_count": {
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "offering_id": {
+            "type": "string"
+          },
+          "price_per_hour": {
+            "format": "double",
+            "type": "number"
+          },
+          "region": {
+            "type": "string"
+          },
+          "tier": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "offering_id",
+          "gpu_type",
+          "gpu_count",
+          "region",
+          "tier",
+          "price_per_hour",
+          "available"
+        ],
+        "type": "object"
+      },
       "OpenAIErrorEnvelope": {
         "properties": {
           "error": {
@@ -4793,11 +5451,29 @@
           "error": {
             "nullable": true,
             "properties": {
+              "alternatives": {
+                "description": "Present only when code is offering_unavailable: up to three live catalog rows of the same GPU type, count and tier, cheapest first. Pass one's offering_id as the new pin.",
+                "items": {
+                  "$ref": "#/components/schemas/OfferingAlternative"
+                },
+                "type": "array"
+              },
               "code": {
+                "description": "Stable machine-readable failure code (see Problem.code), for example operation_failed (retryable after a backoff), price_changed or offering_unavailable (not retryable as sent).",
                 "type": "string"
+              },
+              "current_price_per_hour": {
+                "description": "Present only when code is price_changed: the live hourly price the launch found.",
+                "format": "double",
+                "type": "number"
               },
               "detail": {
                 "type": "string"
+              },
+              "max_price_per_hour": {
+                "description": "Present only when code is price_changed: the hourly price the launch was approved at (max_price_per_hour, or the viewed price). Relaunch with max_price_per_hour of at least current_price_per_hour to accept the new price.",
+                "format": "double",
+                "type": "number"
               }
             },
             "type": "object"
@@ -5005,6 +5681,7 @@
               "model_too_large",
               "gpu_vram_too_small",
               "price_changed",
+              "offering_unavailable",
               "dedicated_ip_limit",
               "dedicated_ip_unavailable",
               "insufficient_balance",
@@ -6178,7 +6855,10 @@
                 "instance.terminated",
                 "instance.failed",
                 "video.completed",
-                "video.failed"
+                "video.failed",
+                "watch.alert.fired",
+                "balance.low",
+                "balance.exhausted"
               ],
               "type": "string"
             },
@@ -6225,6 +6905,318 @@
           "data",
           "next_cursor"
         ],
+        "type": "object"
+      },
+      "Workspace": {
+        "properties": {
+          "cost": {
+            "type": "number"
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "folder_bytes": {
+            "description": "Size of the workspace folder now.",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "gpu_cost": {
+            "description": "GPU time so far, USD.",
+            "type": "number"
+          },
+          "gpu_count": {
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "type": "integer"
+          },
+          "last_active_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "machines": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceMachine"
+            },
+            "type": "array"
+          },
+          "max_price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "owner_user_id": {
+            "type": "string"
+          },
+          "price_per_hour": {
+            "description": "GPU price of the current machine (0 when stopped).",
+            "type": "number"
+          },
+          "saved_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "enum": [
+              "starting",
+              "running",
+              "stopping",
+              "stopped",
+              "failed",
+              "deleting"
+            ],
+            "type": "string"
+          },
+          "status_message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stop_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "storage_bytes": {
+            "description": "Size of the last save.",
+            "type": "integer"
+          },
+          "storage_cost": {
+            "description": "Storage so far, USD.",
+            "type": "number"
+          },
+          "storage_limit_bytes": {
+            "type": "integer"
+          },
+          "storage_price_gb_month": {
+            "type": "number"
+          },
+          "template": {
+            "type": "string"
+          },
+          "url": {
+            "description": "The IDE's address; open it with a link from /workspaces/{id}/open.",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "gpu_count": {
+            "default": 1,
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "example": "rtx_4090",
+            "type": "string"
+          },
+          "idle_timeout": {
+            "default": 1800,
+            "description": "Seconds without use before the workspace saves and stops.",
+            "minimum": 120,
+            "type": "integer"
+          },
+          "max_price_per_hour": {
+            "type": "number"
+          },
+          "name": {
+            "description": "Lowercase letters, digits and hyphens, starting with a letter (32 at most).",
+            "type": "string"
+          },
+          "offering_id": {
+            "description": "Place the machine on this offering, as on instance create.",
+            "type": "string"
+          },
+          "template": {
+            "default": "pytorch",
+            "description": "See GET /workspace-templates.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "gpu_type"
+        ],
+        "type": "object"
+      },
+      "WorkspaceList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceMachine": {
+        "properties": {
+          "gpu_count": {
+            "type": "integer"
+          },
+          "gpu_type": {
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "instance_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "price_per_hour": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ready_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "stop_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "stopped_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceOpen": {
+        "additionalProperties": false,
+        "properties": {
+          "port": {
+            "description": "Open a private app link to this port; omit for the IDE.",
+            "maximum": 65535,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceOpenLink": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceStart": {
+        "additionalProperties": false,
+        "properties": {
+          "gpu_count": {
+            "maximum": 8,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "gpu_type": {
+            "description": "Another GPU type to start on (switch GPU).",
+            "type": "string"
+          },
+          "offering_id": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceTemplate": {
+        "properties": {
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "min_vram_gb": {
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "notebook": {
+            "type": "string"
+          },
+          "packages": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "python": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceTemplateList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceTemplate"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "idle_timeout": {
+            "minimum": 120,
+            "type": "integer"
+          }
+        },
         "type": "object"
       }
     },
@@ -6447,7 +7439,7 @@
     },
     "/billing/balance": {
       "get": {
-        "description": "Returns the organization's credit balance, its auto-pay configuration, and the live burn rate. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter.\n\nDivide `balance_cents` by `burn_cents_per_hour` for the remaining runway in hours. The quotient is undefined in three cases a caller must keep apart: `burn_cents_per_hour` is 0 (nothing running, so the balance funds unbounded idle time), it is `null` (the burn rate could not be determined — NOT the same as idle), or the balance is already at or below zero.\n\nThis is the balance itself — for spend against a configured cap see `/billing/spending-limit`, and for past consumption see `/usage`.\n",
+        "description": "Returns the organization's credit balance, its auto-pay configuration, and the live burn rate. Requires the `billing:read` scope. The organization is taken from the authenticated API key, never from a parameter.\n\nDivide `balance_cents` by `burn_cents_per_hour` for the remaining runway in hours. The quotient is undefined in three cases a caller must keep apart: `burn_cents_per_hour` is 0 (nothing running, so the balance funds unbounded idle time), it is `null` (the burn rate could not be determined — NOT the same as idle), or the balance is already at or below zero.\n\nThis is the balance itself — for spend against a configured cap see `/billing/spending-limit`, and for past consumption see `/usage`.\n\n`runway_hours` does that division for you, adding serverless inference spend over the last hour to the burn. While it is under the low-balance threshold (2 hours by default) and auto-pay is off or failing, every authenticated response carries the `GPUAI-Balance-Warning` header.\n",
         "operationId": "getBalance",
         "responses": {
           "200": {
@@ -6458,7 +7450,12 @@
                 }
               }
             },
-            "description": "OK"
+            "description": "OK",
+            "headers": {
+              "GPUAI-Balance-Warning": {
+                "$ref": "#/components/headers/BalanceWarning"
+              }
+            }
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -7267,6 +8264,11 @@
     "/chat/completions": {
       "post": {
         "operationId": "createChatCompletion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ZeroDataRetentionHeader"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -7333,6 +8335,449 @@
           "Inference"
         ]
       }
+    },
+    "/clusters": {
+      "get": {
+        "description": "Lists the organization's clusters (and deleted ones whose machines are still being released) with status, machine counts and cost so far. Requires the `instances:read` scope.",
+        "operationId": "listClusters",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterList"
+                }
+              }
+            },
+            "description": "The organization's clusters."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List clusters",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "post": {
+        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, and 409 `limit_reached` at the per-organization cap. Requires the `instances:write` scope.",
+        "operationId": "createCluster",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cluster"
+                }
+              }
+            },
+            "description": "Created."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/clusters/{id}": {
+      "delete": {
+        "description": "Deletes the cluster. Every machine is terminated within seconds and stops billing when terminated; the cost stays in your usage. Requires the `instances:write` scope.",
+        "operationId": "deleteCluster",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "get": {
+        "description": "Returns one cluster with its machines, scheduler queues, the queued and running GPU work the head machine last reported, and the cost so far. Requires the `instances:read` scope.",
+        "operationId": "getCluster",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cluster"
+                }
+              }
+            },
+            "description": "The cluster."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Changes the minimum or maximum number of machines or the idle period. Machines are added within seconds when `min_nodes` rises; machines over a lowered `max_nodes` are drained and released. Returns 409 `cluster_deleting` for a cluster being deleted. Requires the `instances:write` scope.",
+        "operationId": "resizeCluster",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterResize"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Cluster"
+                }
+              }
+            },
+            "description": "The resized cluster."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Resize a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/clusters/{id}/kubeconfig": {
+      "get": {
+        "description": "A kubeconfig whose server is the cluster's Kubernetes API through GPU.ai and whose token is the API key of this request. Requires the `instances:read` scope; kubectl itself needs `instances:write`.",
+        "operationId": "getClusterKubeconfig",
+        "responses": {
+          "200": {
+            "content": {
+              "application/yaml": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The kubeconfig."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a kubeconfig for a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "x-dark-launch": true
+    },
+    "/clusters/{id}/kubernetes/{path}": {
+      "get": {
+        "description": "Forwards to the cluster's Kubernetes API with full rights in the cluster. Use it through kubectl with the kubeconfig from `/clusters/{id}/kubeconfig`. Every method is forwarded; GET and POST are listed. Exec and attach are not available. Requires the `instances:write` scope.",
+        "operationId": "kubernetesProxyGet",
+        "responses": {
+          "200": {
+            "description": "The Kubernetes API's answer."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Kubernetes API (GET)",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Any Kubernetes API path, such as api/v1/pods.",
+          "in": "path",
+          "name": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Forwards to the cluster's Kubernetes API (see GET).",
+        "operationId": "kubernetesProxyPost",
+        "responses": {
+          "200": {
+            "description": "The Kubernetes API's answer."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Kubernetes API (POST)",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/clusters/{id}/queues": {
+      "get": {
+        "description": "Lists the KAI scheduler queues with their priority, GPU quota and limit, and the GPUs each uses and has waiting. Requires the `instances:read` scope.",
+        "operationId": "listClusterQueues",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterQueueList"
+                }
+              }
+            },
+            "description": "The queues."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List a cluster's scheduler queues",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "x-dark-launch": true
+    },
+    "/clusters/{id}/queues/{name}": {
+      "delete": {
+        "description": "Deletes a queue. The default queue cannot be deleted. Requires the `instances:write` scope.",
+        "operationId": "deleteClusterQueue",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a scheduler queue",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "The queue's name (lowercase letters, digits and hyphens).",
+          "in": "path",
+          "name": "name",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "put": {
+        "description": "Sets a queue. Pods choose it with the label `kai.scheduler/queue` and `schedulerName: kai-scheduler`. `gpu_quota` is the GPUs the queue is guaranteed and `gpu_limit` the most it may use (-1 for none); work over the limit waits until the queue's own work frees GPUs, and adds no machines. Requires the `instances:write` scope.",
+        "operationId": "setClusterQueue",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClusterQueueSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterQueue"
+                }
+              }
+            },
+            "description": "The queue."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create or update a scheduler queue",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/clusters/{id}/ray/{path}": {
+      "get": {
+        "description": "Forwards to the cluster's Ray dashboard. Use `https://api.gpu.ai/v1/clusters/{id}/ray` as the address of `ray job submit` with the API key in an Authorization header. Every method is forwarded; GET and POST are listed. Returns 503 `cluster_not_ready` until the head machine is up. Requires the `instances:write` scope.",
+        "operationId": "rayProxyGet",
+        "responses": {
+          "200": {
+            "description": "The Ray dashboard's answer."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Ray dashboard and job API (GET)",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The cluster's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        {
+          "description": "Any Ray dashboard or job API path, such as api/jobs/.",
+          "in": "path",
+          "name": "path",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Forwards to the cluster's Ray dashboard (see GET).",
+        "operationId": "rayProxyPost",
+        "responses": {
+          "200": {
+            "description": "The Ray dashboard's answer."
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Ray dashboard and job API (POST)",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
     },
     "/community/earnings": {
       "get": {
@@ -7904,13 +9349,17 @@
         "tags": [
           "Instances"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/embeddings": {
       "post": {
         "description": "Synchronous text embeddings. Accepts a single string or an array of up to 2048 strings, bounded so the response stays under 64 MiB (about 680 inputs at 4096 dimensions; fewer at a larger `dimensions` value) — over-limit requests are rejected with 400 before any processing. Returns one float vector per input, in request order. Billed on the upstream's reported prompt tokens at the model's listed input rate, rounded up to the next whole cent per request; an embeddings call emits no completion tokens, so `usage` carries `prompt_tokens` and `total_tokens` only. `encoding_format` accepts only `float` — a value of `base64` is rejected with `unsupported_parameter`. A chat model id on this route returns 404 `model_not_found`: the id is valid, but not on this surface.",
         "operationId": "createEmbeddings",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/ZeroDataRetentionHeader"
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -8039,8 +9488,7 @@
         "tags": [
           "Endpoints"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/endpoints/{id}": {
       "delete": {
@@ -8105,8 +9553,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/endpoints/{id}/openai/v1/chat/completions": {
       "parameters": [
@@ -8181,8 +9628,7 @@
         "tags": [
           "Endpoints"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/endpoints/{id}/openai/v1/completions": {
       "parameters": [
@@ -8259,8 +9705,7 @@
         "tags": [
           "Endpoints"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/endpoints/{id}/openai/v1/models": {
       "get": {
@@ -8319,8 +9764,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/environments": {
       "get": {
@@ -9450,6 +10894,9 @@
         "parameters": [
           {
             "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          },
+          {
+            "$ref": "#/components/parameters/ZeroDataRetentionHeader"
           }
         ],
         "requestBody": {
@@ -9576,6 +11023,9 @@
             },
             "description": "Accepted; long-running operation",
             "headers": {
+              "GPUAI-Balance-Warning": {
+                "$ref": "#/components/headers/BalanceWarning"
+              },
               "GPUAI-Hint": {
                 "description": "Advisory only, and absent on most launches. Sent when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends. It never changes the launch.",
                 "schema": {
@@ -9868,7 +11318,7 @@
         ]
       },
       "post": {
-        "description": "Queues a batch job: a container image, a command, and the GPU it needs. The platform places it on a machine in your organization's job pool, starting a machine when none has room, and terminates machines that have been empty for a few minutes. Requires the `instances:write` scope, because a job can start a machine.\n\nThree opt-ins decide how the job is placed. `max_wait_seconds` lets the job wait for space on a machine you are already paying for before a new one is started. `allow_sharing` lets the job run on the same GPU as other jobs from your own organization. A GPU is never shared with another customer. `allow_restart` lets the platform stop and rerun the job, which sharing needs.\n\nA job shares a GPU only when `allow_sharing` and `allow_restart` are both true and its memory is known, from `memory_hint_mb` or from the peaks of earlier finished jobs with the same name or image. Any other job gets a whole GPU.\n\nSharing is also limited by compute. Jobs share a GPU only while the sum of their expected compute duties (the share of time each keeps the GPU busy) stays at or under 100%, so two jobs that saturate the GPU never share one. A job's duty comes from `compute_hint_pct` or from the measured utilization of earlier finished jobs with the same name or image. A job with neither counts as 100% and gets a GPU to itself until it has been measured.\n\nThe memory reservation is not a hard cap. A job that exits out of GPU memory, or that is stopped for outgrowing its reservation on a full GPU, is run again with a larger reservation, then with a whole GPU, up to `max_retries`. Every job gets a checkpoint directory that survives those reruns on the same machine.\n\nBilling: the machines a job runs on are instances of your organization and are billed like any instance. `attributed_cost_usd` on the job is its share of that, for display.\n",
+        "description": "Queues a batch job: a container image, a command, and the GPU it needs. The platform places it on a machine in your organization's job pool, starting a machine when none has room, and terminates machines that have been empty for a few minutes. Requires the `instances:write` scope, because a job can start a machine.\n\nThree opt-ins decide how the job is placed. `max_wait_seconds` lets the job wait for space on a machine you are already paying for before a new one is started. `allow_sharing` lets the job run on the same GPU as other jobs from your own organization. A GPU is never shared with another customer. `allow_restart` lets the platform stop and rerun the job, which sharing needs.\n\nA job shares a GPU only when `allow_sharing` and `allow_restart` are both true and its memory is known, from `memory_hint_mb` or from the peaks of earlier finished jobs with the same name or image. Any other job gets a whole GPU.\n\nSharing is also limited by compute. Jobs share a GPU only while the sum of their expected compute duties (the share of time each keeps the GPU busy) stays at or under 100%, so two jobs that saturate the GPU never share one. A job's duty comes from `compute_hint_pct` or from the measured utilization of earlier finished jobs with the same name or image. A job with neither counts as 100% and gets a GPU to itself until it has been measured.\n\nThe memory reservation is not a hard cap. A job that exits out of GPU memory, or that is stopped for outgrowing its reservation on a full GPU, is run again with a larger reservation, then with a whole GPU, up to `max_retries`. Every job gets a checkpoint directory that survives those reruns on the same machine.\n\nBilling: the machines a job runs on are instances of your organization and are billed like any instance. `attributed_cost_usd` on the job is its share of that, for display.\n\nFree trial: when this deployment runs one, an organization's first jobs are free up to a cap (GET /jobs/trial). Their attributed cost is credited back to the balance as they run.\n",
         "operationId": "createJob",
         "parameters": [
           {
@@ -9894,7 +11344,15 @@
                 }
               }
             },
-            "description": "Created"
+            "description": "Created",
+            "headers": {
+              "GPUAI-Hint": {
+                "description": "Advisory only. Sent while the organization's first jobs are free (GET /jobs/trial), e.g. \"Your first jobs are free, up to $10. We credit back what they cost as they run.\"",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
           },
           "402": {
             "content": {
@@ -9934,12 +11392,11 @@
         "tags": [
           "Jobs"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/jobs/gpu-types": {
       "get": {
-        "description": "Returns the GPU types the suppliers that run jobs rent as a one-GPU machine, smallest memory first. A type is listed when one of them offered it in the last 7 days, in stock or not. When `complete` is true, `POST /jobs` refuses any other `gpu_type` with a 422 (and a `min_vram_gb` larger than every listed type), instead of queueing a job that could never start. When `complete` is false the list may be partial or empty, and a job for any known GPU model is accepted and waits for a machine. Requires the `instances:read` scope.\n",
+        "description": "Returns the GPU types the suppliers that run jobs rent as a one-GPU machine, smallest memory first. A type is listed when one of them offered it in the last 7 days, in stock or not. `available_now` says whether one has such a machine to rent now, and `price_per_gpu_hour` is the cheapest retail price of it at that read (a guide, not a quote: the launch prices it again). When `complete` is true, `POST /jobs` refuses any other `gpu_type` with a 422 (and a `min_vram_gb` larger than every listed type), instead of queueing a job that could never start. When `complete` is false the list may be partial or empty, and a job for any known GPU model is accepted and waits for a machine. Requires the `instances:read` scope.\n",
         "operationId": "listJobGpuTypes",
         "responses": {
           "200": {
@@ -9963,8 +11420,35 @@
         "tags": [
           "Jobs"
         ]
-      },
-      "x-dark-launch": true
+      }
+    },
+    "/jobs/trial": {
+      "get": {
+        "description": "Reports the Jobs free trial for this organization. When the deployment runs one, an organization's first jobs are free up to `cap_cents`: the cost attributed to its jobs is credited back to its balance as they run, until the credits reach the cap. One trial per organization, for organizations that had not used Jobs before the trial started. `enabled` is false when there is no trial. Requires the `instances:read` scope.\n",
+        "operationId": "getJobTrial",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobTrial"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Whether this organization's first jobs are free",
+        "tags": [
+          "Jobs"
+        ]
+      }
     },
     "/jobs/{id}": {
       "get": {
@@ -10013,8 +11497,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/jobs/{id}/cancel": {
       "parameters": [
@@ -10068,8 +11551,7 @@
         "tags": [
           "Jobs"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/jobs/{id}/logs": {
       "get": {
@@ -10144,8 +11626,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/jobs/{id}/telemetry": {
       "get": {
@@ -10194,8 +11675,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/market-history": {
       "get": {
@@ -10511,8 +11991,85 @@
         "tags": [
           "Operations"
         ]
+      }
+    },
+    "/organization/data-retention": {
+      "get": {
+        "description": "Returns whether zero data retention (ZDR) is on for the organization. When it is on, chat, embeddings and image requests route only to model hosts that keep no prompt or output content, a model without one returns 400 `zero_data_retention_unavailable`, and video generation is refused. Requires the `serverless:read` scope. The organization is taken from the authenticated API key.\n",
+        "operationId": "getDataRetention",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataRetention"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get the org zero data retention setting",
+        "tags": [
+          "Inference"
+        ]
       },
-      "x-dark-launch": true
+      "put": {
+        "description": "Sets the organization's zero data retention (ZDR) setting. Takes effect from the next inference request. Requires the `serverless:write` scope AND org-admin privileges (a non-admin member gets 403). `zero_data_retention` is required (422 when missing).\n",
+        "operationId": "updateDataRetention",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "zero_data_retention": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "zero_data_retention"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataRetention"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "422": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Turn zero data retention on or off for the org",
+        "tags": [
+          "Inference"
+        ]
+      }
     },
     "/pricing": {
       "get": {
@@ -10770,8 +12327,7 @@
         "tags": [
           "Secrets"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/secrets/import": {
       "post": {
@@ -10809,8 +12365,7 @@
         "tags": [
           "Secrets"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/secrets/{name}": {
       "delete": {
@@ -10920,8 +12475,7 @@
         "tags": [
           "Secrets"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/ssh-keys": {
       "get": {
@@ -11685,7 +13239,10 @@
                         "instance.terminated",
                         "instance.failed",
                         "video.completed",
-                        "video.failed"
+                        "video.failed",
+                        "watch.alert.fired",
+                        "balance.low",
+                        "balance.exhausted"
                       ],
                       "type": "string"
                     },
@@ -11785,6 +13342,339 @@
           }
         }
       ]
+    },
+    "/workspace-templates": {
+      "get": {
+        "description": "The starting environments a workspace can be created from, with the Python packages each installs into the workspace. Requires the `instances:read` scope.",
+        "operationId": "listWorkspaceTemplates",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceTemplateList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List workspace templates",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces": {
+      "get": {
+        "description": "Lists the organization's workspaces with status and cost so far. Requires the `instances:read` scope.",
+        "operationId": "listWorkspaces",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List workspaces",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "post": {
+        "description": "Creates a browser IDE workspace (a VS Code compatible editor, a terminal and JupyterLab) on a GPU machine and starts it. The caller becomes its owner; only the owner can open it. GPU time is billed like an instance while it runs, and its saved folder is billed for storage. Returns 422 `validation_failed` for a bad field and 409 `name_taken` or `limit_reached`. Requires the `instances:write` scope.",
+        "operationId": "createWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "Created; starting."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Create a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces/{id}": {
+      "delete": {
+        "description": "Deletes the workspace. Its machine is released without saving and its saved folder is deleted. Requires the `instances:write` scope.",
+        "operationId": "deleteWorkspace",
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Delete a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "get": {
+        "description": "Returns one workspace with its recent machines and its GPU and storage cost so far. Requires the `instances:read` scope.",
+        "operationId": "getWorkspace",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Get a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The workspace's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "patch": {
+        "description": "Sets `idle_timeout`, the seconds without use after which the workspace saves and stops. Requires the `instances:write` scope.",
+        "operationId": "updateWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Change a workspace's idle period",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces/{id}/open": {
+      "parameters": [
+        {
+          "description": "The workspace's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Returns a one-time link, valid for two minutes, that logs the owner into the IDE (no port) or into a private app link to `port` inside the workspace. Only the workspace's owner can open it (403 `not_owner`). Requires the `instances:write` scope.",
+        "operationId": "openWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceOpen"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceOpenLink"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Open a workspace or an app link",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces/{id}/start": {
+      "parameters": [
+        {
+          "description": "The workspace's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Starts a stopped workspace with its saved folder. Pass another `gpu_type` (or an `offering_id`) to switch GPU. Returns 409 `not_stopped` unless the workspace is stopped or failed. Requires the `instances:write` scope.",
+        "operationId": "startWorkspace",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceStart"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Start a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces/{id}/stop": {
+      "parameters": [
+        {
+          "description": "The workspace's id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "format": "uuid",
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Saves the workspace folder (including Python packages installed into it) and releases the machine, which stops its GPU billing. Requires the `instances:write` scope.",
+        "operationId": "stopWorkspace",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Workspace"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Stop a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
     }
   },
   "security": [
@@ -11834,6 +13724,14 @@
     {
       "description": "Live pricing offers per GPU type, GPU count, region, and tier, with current availability. No authentication required.",
       "name": "Pricing"
+    },
+    {
+      "description": "GPU clusters: machines of one GPU type joined on an encrypted private network as one Kubernetes cluster with Ray and the KAI scheduler (NVIDIA's open-source Run:ai scheduler), scaled between a minimum and a maximum number of machines. Machines are billed like instances.",
+      "name": "Clusters"
+    },
+    {
+      "description": "Cloud IDE workspaces: a VS Code compatible editor, a terminal and JupyterLab on a GPU machine, opened in the browser with your GPU.ai login. The workspace folder is saved when it stops and restored when it starts, on any GPU type.",
+      "name": "Workspaces"
     },
     {
       "description": "The launch environment catalog: certified frameworks, selectable versions, \"What's included\" software lists, and the raw-VM OS images accepted by instance launch. No authentication required.",
