@@ -1383,7 +1383,7 @@
             "type": "string"
           },
           "price_per_hour": {
-            "description": "What the cluster's machines cost now, per hour (GET of one cluster).",
+            "description": "What the cluster's machines cost now, per hour. Machines being released are not counted; a deleted cluster's price is 0.",
             "type": "number"
           },
           "queues": {
@@ -1621,6 +1621,10 @@
             "type": "integer"
           },
           "starting": {
+            "type": "integer"
+          },
+          "terminating": {
+            "description": "Machines being released. A deleted cluster is `deleting` until this is 0.",
             "type": "integer"
           }
         },
@@ -5478,6 +5482,10 @@
             },
             "type": "object"
           },
+          "hint": {
+            "description": "Advisory pointer to Jobs (POST /jobs), present only on the synchronous 202 from POST /instances and only on some launches: when the request is a one-off batch run, or the organization launched many instances in the last 24 hours that each ran for less than 15 minutes. Same text as the GPUAI-Hint header. Never on GET /operations/{id} polls, and it never changes the launch.",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "instance.create",
@@ -7163,6 +7171,13 @@
             "description": "Another GPU type to start on (switch GPU).",
             "type": "string"
           },
+          "max_price_per_hour": {
+            "description": "Highest hourly GPU price, USD; null removes it. Kept for later starts; raise it to start on a pricier GPU.",
+            "exclusiveMinimum": 0,
+            "maximum": 1000,
+            "nullable": true,
+            "type": "number"
+          },
           "offering_id": {
             "type": "string"
           }
@@ -7215,6 +7230,13 @@
           "idle_timeout": {
             "minimum": 120,
             "type": "integer"
+          },
+          "max_price_per_hour": {
+            "description": "Highest hourly GPU price, USD; null removes it. Applies from the next start.",
+            "exclusiveMinimum": 0,
+            "maximum": 1000,
+            "nullable": true,
+            "type": "number"
           }
         },
         "type": "object"
@@ -8364,7 +8386,7 @@
         ]
       },
       "post": {
-        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, and 409 `limit_reached` at the per-organization cap. Requires the `instances:write` scope.",
+        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, 409 `limit_reached` at the per-organization cap, and 402 `insufficient_balance` when the prepaid balance is not positive (a cluster whose balance runs out later starts no machines until credit is added). Requires the `instances:write` scope.",
         "operationId": "createCluster",
         "requestBody": {
           "content": {
@@ -11027,7 +11049,7 @@
                 "$ref": "#/components/headers/BalanceWarning"
               },
               "GPUAI-Hint": {
-                "description": "Advisory only, and absent on most launches. Sent when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends. It never changes the launch.",
+                "description": "Advisory only, and absent on most launches. Sent to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends, when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) or the organization launched many instances in the last 24 hours that each ran for less than 15 minutes. The same text is in the response body's hint field. It never changes the launch.",
                 "schema": {
                   "type": "string"
                 }
