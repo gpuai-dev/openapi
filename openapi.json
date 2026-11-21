@@ -4431,6 +4431,10 @@
           "timeout_seconds": {
             "type": "integer"
           },
+          "trial_funded": {
+            "description": "The job was submitted with no balance and runs on the free trial. It stops when the trial credit is used.\n",
+            "type": "boolean"
+          },
           "util_mean_pct": {
             "description": "Mean GPU utilization measured during the last finished attempt. See `compute_source` on the attempt for how it was attributed.\n",
             "type": [
@@ -4671,7 +4675,7 @@
             "type": "string"
           },
           "command": {
-            "description": "The program and its arguments. The first item replaces the image's entrypoint and the rest are its arguments, so `[\"python\", \"train.py\", \"--epochs\", \"3\"]` runs exactly that.\n",
+            "description": "The program and its arguments. The first item replaces the image's entrypoint and the rest are its arguments, so `[\"python\", \"train.py\", \"--epochs\", \"3\"]` runs exactly that. Send this or `script`.\n",
             "items": {
               "type": "string"
             },
@@ -4700,7 +4704,7 @@
             "type": "string"
           },
           "image": {
-            "description": "The container image to run, such as `registry.example.com/team/train:1.2`. The machine must be able to pull it without credentials.\n",
+            "description": "The container image to run, such as `registry.example.com/team/train:1.2`. The machine must be able to pull it without credentials. Required unless the deployment runs a default image: then it may be left out, `gpu_type` is required, and the job runs on the GPU.ai PyTorch image built for that GPU.\n",
             "type": "string"
           },
           "isolation": {
@@ -4756,6 +4760,31 @@
             "maxLength": 120,
             "type": "string"
           },
+          "repo": {
+            "additionalProperties": false,
+            "description": "A git repository cloned into `/workspace/repo`, the working directory of the command or script. Only where the deployment runs a default image. For a private repository, store a token as the organization secret `GIT_TOKEN` and name it in `secrets`.\n",
+            "properties": {
+              "ref": {
+                "description": "A branch, tag or commit. Empty means the default branch.",
+                "maxLength": 200,
+                "type": "string"
+              },
+              "url": {
+                "description": "An https URL of the repository, with no credentials in it.",
+                "maxLength": 512,
+                "type": "string"
+              }
+            },
+            "required": [
+              "url"
+            ],
+            "type": "object"
+          },
+          "script": {
+            "description": "A shell script run with `bash -c` in place of `command`, such as `pip install -r requirements.txt && python train.py`. Only where the deployment runs a default image; elsewhere it is refused with a 422.\n",
+            "maxLength": 30720,
+            "type": "string"
+          },
           "secrets": {
             "description": "Names of organization secrets (POST /secrets) the job's container receives as environment variables of the same names. Values are never in a response or a log. Returns 422 `validation_failed` when a name does not exist or secrets are not enabled on this deployment.",
             "items": {
@@ -4772,10 +4801,6 @@
             "type": "integer"
           }
         },
-        "required": [
-          "image",
-          "command"
-        ],
         "type": "object"
       },
       "JobGpuTypes": {
@@ -5014,6 +5039,24 @@
           "enabled": {
             "description": "False when this deployment runs no trial. Every other field is then zero.",
             "type": "boolean"
+          },
+          "funding": {
+            "description": "How an eligible organization's trial is paid for. `credit_back`: it pays as usual and job cost is credited back. `no_deposit`: it has no balance and may submit a trial job now. `deposit_first`: it has no balance and must add credits first. Omitted when not eligible.\n",
+            "enum": [
+              "credit_back",
+              "no_deposit",
+              "deposit_first"
+            ],
+            "type": "string"
+          },
+          "max_price_per_hour": {
+            "description": "The most a trial job's GPU may cost per hour. Only with `funding` no_deposit, and only when the deployment sets such a limit (by default it sets none).",
+            "format": "double",
+            "type": "number"
+          },
+          "max_runtime_seconds": {
+            "description": "The longest a trial job may run. Only with `funding` no_deposit, and only when the deployment sets such a limit (by default it sets none).",
+            "type": "integer"
           },
           "message": {
             "description": "The line to show the user, e.g. \"Your first jobs are free, up to $10.\" Omitted when not eligible.",
@@ -11340,7 +11383,7 @@
         ]
       },
       "post": {
-        "description": "Queues a batch job: a container image, a command, and the GPU it needs. The platform places it on a machine in your organization's job pool, starting a machine when none has room, and terminates machines that have been empty for a few minutes. Requires the `instances:write` scope, because a job can start a machine.\n\nThree opt-ins decide how the job is placed. `max_wait_seconds` lets the job wait for space on a machine you are already paying for before a new one is started. `allow_sharing` lets the job run on the same GPU as other jobs from your own organization. A GPU is never shared with another customer. `allow_restart` lets the platform stop and rerun the job, which sharing needs.\n\nA job shares a GPU only when `allow_sharing` and `allow_restart` are both true and its memory is known, from `memory_hint_mb` or from the peaks of earlier finished jobs with the same name or image. Any other job gets a whole GPU.\n\nSharing is also limited by compute. Jobs share a GPU only while the sum of their expected compute duties (the share of time each keeps the GPU busy) stays at or under 100%, so two jobs that saturate the GPU never share one. A job's duty comes from `compute_hint_pct` or from the measured utilization of earlier finished jobs with the same name or image. A job with neither counts as 100% and gets a GPU to itself until it has been measured.\n\nThe memory reservation is not a hard cap. A job that exits out of GPU memory, or that is stopped for outgrowing its reservation on a full GPU, is run again with a larger reservation, then with a whole GPU, up to `max_retries`. Every job gets a checkpoint directory that survives those reruns on the same machine.\n\nBilling: the machines a job runs on are instances of your organization and are billed like any instance. `attributed_cost_usd` on the job is its share of that, for display.\n\nFree trial: when this deployment runs one, an organization's first jobs are free up to a cap (GET /jobs/trial). Their attributed cost is credited back to the balance as they run.\n",
+        "description": "Queues a batch job: a container image, a command, and the GPU it needs. The platform places it on a machine in your organization's job pool, starting a machine when none has room, and terminates machines that have been empty for a few minutes. Requires the `instances:write` scope, because a job can start a machine.\n\nThree opt-ins decide how the job is placed. `max_wait_seconds` lets the job wait for space on a machine you are already paying for before a new one is started. `allow_sharing` lets the job run on the same GPU as other jobs from your own organization. A GPU is never shared with another customer. `allow_restart` lets the platform stop and rerun the job, which sharing needs.\n\nA job shares a GPU only when `allow_sharing` and `allow_restart` are both true and its memory is known, from `memory_hint_mb` or from the peaks of earlier finished jobs with the same name or image. Any other job gets a whole GPU.\n\nSharing is also limited by compute. Jobs share a GPU only while the sum of their expected compute duties (the share of time each keeps the GPU busy) stays at or under 100%, so two jobs that saturate the GPU never share one. A job's duty comes from `compute_hint_pct` or from the measured utilization of earlier finished jobs with the same name or image. A job with neither counts as 100% and gets a GPU to itself until it has been measured.\n\nThe memory reservation is not a hard cap. A job that exits out of GPU memory, or that is stopped for outgrowing its reservation on a full GPU, is run again with a larger reservation, then with a whole GPU, up to `max_retries`. Every job gets a checkpoint directory that survives those reruns on the same machine.\n\nBilling: the machines a job runs on are instances of your organization and are billed like any instance. `attributed_cost_usd` on the job is its share of that, for display.\n\nFree trial: when this deployment runs one, an organization's first jobs are free up to a cap (GET /jobs/trial). Their attributed cost is credited back to the balance as they run.\n\nNo balance: an organization with no balance is refused (402) unless the deployment runs the free trial for organizations with no balance and GET /jobs/trial reports `funding` \"no_deposit\". Then the job runs on the trial with `trial_funded` true. When the trial credit is used the job is cancelled with the status reason \"Stopped because your free Jobs trial credit ran out. Add credits to keep running jobs.\"\n",
         "operationId": "createJob",
         "parameters": [
           {
@@ -11369,7 +11412,7 @@
             "description": "Created",
             "headers": {
               "GPUAI-Hint": {
-                "description": "Advisory only. Sent while the organization's first jobs are free (GET /jobs/trial), e.g. \"Your first jobs are free, up to $10. We credit back what they cost as they run.\"",
+                "description": "Advisory only. Sent while the organization's first jobs are free (GET /jobs/trial), e.g. \"Your first jobs are free, up to $10. We credit back what they cost as they run.\" For a job that runs on the trial with no balance it says the job stops when the trial credit is used.",
                 "schema": {
                   "type": "string"
                 }
@@ -11384,7 +11427,7 @@
                 }
               }
             },
-            "description": "The organization has no balance. Add credits, then submit again."
+            "description": "The organization has no balance and the job cannot run on the free trial (the trial is off, used, or at its limit for today, or the person already used it). The detail says which. Add credits, then submit again.\n"
           },
           "422": {
             "content": {
