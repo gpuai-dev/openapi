@@ -4442,6 +4442,10 @@
               "null"
             ]
           },
+          "wait_for_capacity": {
+            "description": "The job was submitted with `wait_for_capacity`: it waits for a machine of its type for up to 24 hours instead of being refused or failed for lack of capacity.\n",
+            "type": "boolean"
+          },
           "whole_gpu": {
             "description": "Whether the current or last attempt has a GPU to itself. Null before the job is first placed.",
             "type": [
@@ -4699,12 +4703,20 @@
             "description": "Environment variables for the job, at most 100. Names starting with `GPUAI_` are reserved. Values are stored to run the job and are never returned by the API.\n",
             "type": "object"
           },
+          "env_from_job": {
+            "description": "The id of an earlier job of yours whose environment variables this job starts with. Variables in `env` are applied over them. Use it to resubmit an edited job without sending its values again: the API never returns env values. Returns 422 `validation_failed` when no such job of your organization exists.",
+            "type": "string"
+          },
           "gpu_type": {
             "description": "The GPU model to run on, as in GET /v1/gpu-types. One of `gpu_type` or `min_vram_gb` is required.\n",
             "type": "string"
           },
           "image": {
             "description": "The container image to run, such as `registry.example.com/team/train:1.2`. The machine must be able to pull it without credentials. Required unless the deployment runs a default image: then it may be left out, `gpu_type` is required, and the job runs on the GPU.ai PyTorch image built for that GPU.\n",
+            "type": "string"
+          },
+          "input_file": {
+            "description": "The id of a file uploaded with POST /jobs/inputs. When the job starts it gets a short-lived URL of the file in `GPUAI_INPUT_URL` and its name in `GPUAI_INPUT_NAME`. A file is read by one job only. Returns 422 `validation_failed` when the file was not uploaded, has expired, is already used, or job files are not enabled on this deployment.",
             "type": "string"
           },
           "isolation": {
@@ -4799,12 +4811,21 @@
             "maximum": 259200,
             "minimum": 1,
             "type": "integer"
+          },
+          "wait_for_capacity": {
+            "default": false,
+            "description": "Queue the job even when no machine of its GPU type is available right now (`available_now` false in `GET /jobs/gpu-types`), and keep it waiting for one for up to 24 hours. Without it such a job is refused with 422 and the nearest type that is available, and a queued job whose machine launches keep being refused for lack of capacity fails within a few minutes.\n",
+            "type": "boolean"
           }
         },
         "type": "object"
       },
       "JobGpuTypes": {
         "properties": {
+          "capacity_checked": {
+            "description": "True when `available_now` is a live answer that submit acts on: a job for a type that is not available now (or, with only `min_vram_gb`, when no available type is that large) is refused with 422 unless it sets `wait_for_capacity`. False when the stock could not be read just now: nothing is then refused for capacity.\n",
+            "type": "boolean"
+          },
           "complete": {
             "description": "True when the list is authoritative and any other gpu_type is refused at submit.",
             "type": "boolean"
@@ -4813,7 +4834,7 @@
             "items": {
               "properties": {
                 "available_now": {
-                  "description": "True when a supplier that runs jobs had a one-GPU machine of this type to rent at the last catalog read, a few minutes ago. False means it was only seen earlier: a job for it is accepted and waits for one.\n",
+                  "description": "True when a supplier that runs jobs had a one-GPU machine of this type to rent at the last catalog read, a few minutes ago, and recent launches of it were not refused. When `capacity_checked` is true, a job for a type that is not available now is refused unless it sets `wait_for_capacity`.\n",
                   "type": "boolean"
                 },
                 "gpu_type": {
@@ -4855,6 +4876,67 @@
         "required": [
           "data",
           "complete"
+        ],
+        "type": "object"
+      },
+      "JobInput": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "expires_at": {
+            "description": "When the file is deleted if no job has read it.",
+            "format": "date-time",
+            "type": "string"
+          },
+          "filename": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "max_bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "upload_expires_at": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "upload_url": {
+            "description": "PUT the file's bytes here in one request.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "filename",
+          "bytes",
+          "upload_url",
+          "upload_expires_at",
+          "expires_at",
+          "max_bytes"
+        ],
+        "type": "object"
+      },
+      "JobInputCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "description": "The file's exact size in bytes.",
+            "format": "int64",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "filename": {
+            "description": "The file's name. Reduced to letters, digits, dot, dash and underscore.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "filename",
+          "bytes"
         ],
         "type": "object"
       },
@@ -4901,6 +4983,111 @@
         "required": [
           "data",
           "next_after"
+        ],
+        "type": "object"
+      },
+      "JobOutputFile": {
+        "properties": {
+          "bytes": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path",
+          "bytes"
+        ],
+        "type": "object"
+      },
+      "JobOutputs": {
+        "properties": {
+          "attempt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "bytes": {
+            "description": "Size of the zip archive.",
+            "format": "int64",
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "created_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "filename": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "files": {
+            "description": "The files in the archive, at most 200 listed.",
+            "items": {
+              "$ref": "#/components/schemas/JobOutputFile"
+            },
+            "type": "array"
+          },
+          "max_bytes": {
+            "description": "The most one job's outputs may hold.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "message": {
+            "description": "What the status means for this job, in plain words.",
+            "type": "string"
+          },
+          "outputs_path": {
+            "description": "The directory in the container that is uploaded.",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "pending",
+              "none",
+              "expired"
+            ],
+            "type": "string"
+          },
+          "url": {
+            "description": "Downloads the zip archive until url_expires_at.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url_expires_at": {
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "status",
+          "message",
+          "outputs_path",
+          "files",
+          "max_bytes"
         ],
         "type": "object"
       },
@@ -7700,8 +7887,7 @@
         "tags": [
           "Billing"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/billing/deposits/card/checkout": {
       "post": {
@@ -7780,8 +7966,7 @@
         "tags": [
           "Billing"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/billing/deposits/card/{id}": {
       "get": {
@@ -7830,8 +8015,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/billing/deposits/crypto": {
       "post": {
@@ -8224,8 +8408,7 @@
         "tags": [
           "Billing"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/billing/spending-limit": {
       "get": {
@@ -11487,6 +11670,64 @@
         ]
       }
     },
+    "/jobs/inputs": {
+      "post": {
+        "description": "Returns a URL to PUT one file to, in a single request of exactly `bytes` bytes, within an hour. Name the returned `id` in the `input_file` of POST /jobs. The job reads the file from `GPUAI_INPUT_URL`. A file no job has read is deleted after 7 days. Requires the `instances:write` scope.\n",
+        "operationId": "createJobInput",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobInputCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobInput"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Job files are not enabled on this deployment."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The file name is empty or the size is above `max_bytes`."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Upload a file for a job to read",
+        "tags": [
+          "Jobs"
+        ]
+      }
+    },
     "/jobs/trial": {
       "get": {
         "description": "Reports the Jobs free trial for this organization. When the deployment runs one, an organization's first jobs are free up to `cap_cents`: the cost attributed to its jobs is credited back to its balance as they run, until the credits reach the cap. One trial per organization, for organizations that had not used Jobs before the trial started. `enabled` is false when there is no trial. Requires the `instances:read` scope.\n",
@@ -11692,6 +11933,129 @@
           }
         }
       ]
+    },
+    "/jobs/{id}/outputs": {
+      "get": {
+        "description": "Everything a job writes to its outputs directory (`/outputs`, also in `GPUAI_OUTPUTS_DIR`) is zipped and stored when the job ends, up to `max_bytes`. `status` is `available` (download the zip from `url` until `url_expires_at`, then ask again for a fresh URL), `pending` (the job has not ended), `none` (it wrote no files) or `expired` (stored files are kept for 7 days). A retried job keeps the outputs of its last attempt. Requires the `instances:read` scope.\n",
+        "operationId": "getJobOutputs",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobOutputs"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The job does not exist, is not owned by the caller's organization, or job files are off."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Download what a job wrote to /outputs",
+        "tags": [
+          "Jobs"
+        ]
+      },
+      "parameters": [
+        {
+          "description": "The job id.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/jobs/{id}/rerun": {
+      "parameters": [
+        {
+          "description": "The id of the job to run again.",
+          "in": "path",
+          "name": "id",
+          "required": true,
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "post": {
+        "description": "Submits one of your jobs again as a new job, with the same name, image, command or script, repository, environment, secrets, GPU and settings. It is an ordinary submission: the balance check, the capacity check and the free trial apply as they do to POST /jobs, with the same errors. A job that read an uploaded input file cannot be run again as it is (a file is used by one job only); that returns 422 `validation_failed`. To change anything first, submit with POST /jobs and `env_from_job`. Requires the `instances:write` scope.\n",
+        "operationId": "rerunJob",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/IdempotencyKeyHeader"
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Job"
+                }
+              }
+            },
+            "description": "The new job, queued."
+          },
+          "402": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "Insufficient balance, or the free trial does not cover the job."
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The job does not exist or is not owned by the caller's organization."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The job cannot be submitted again as it is, such as no machine of its GPU type is available now."
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Run a job again",
+        "tags": [
+          "Jobs"
+        ]
+      }
     },
     "/jobs/{id}/telemetry": {
       "get": {
@@ -13805,6 +14169,10 @@
     {
       "description": "GPU instances: launch, list, inspect, update, and terminate. Mutating calls return an async operation to poll for completion.",
       "name": "Instances"
+    },
+    {
+      "description": "Jobs: run a container, a script or a git repository on a GPU and get its output. A machine is started for the job and shut down a few minutes after it finishes, so nothing bills after the work is done. Jobs from your own organization can opt in to waiting for and sharing a GPU. The gpuai_sdk.jobs helper (pip install gpuai-sdk) submits a job, streams its output and waits for it to finish.",
+      "name": "Jobs"
     },
     {
       "description": "Model endpoints: an open model (a Hugging Face model id) served by vLLM on a GPU type you pick, behind a stable OpenAI-compatible URL. Machines start on the first request, scale with load up to max_replicas, and are released after the idle timeout. Machine time is billed like instances.",
