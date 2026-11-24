@@ -3561,6 +3561,56 @@
         ],
         "type": "object"
       },
+      "GPUStockList": {
+        "properties": {
+          "data": {
+            "items": {
+              "$ref": "#/components/schemas/GPUStockType"
+            },
+            "type": "array"
+          },
+          "stock_known": {
+            "description": "False when the live catalog could not be read; nothing is then refused for capacity.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "GPUStockType": {
+        "properties": {
+          "gpu_count": {
+            "description": "GPUs per machine.",
+            "type": "integer"
+          },
+          "gpu_type": {
+            "example": "rtx_a6000",
+            "type": "string"
+          },
+          "in_stock": {
+            "type": "boolean"
+          },
+          "price_per_hour": {
+            "description": "Cheapest machine in stock, USD per hour for the whole machine; 0 when not in stock.",
+            "type": "number"
+          },
+          "regions": {
+            "description": "Regions with one in stock.",
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "vm_in_stock": {
+            "description": "In stock as a whole VM, where launches place first; price_per_hour is then the VM price.",
+            "type": "boolean"
+          },
+          "vram_gb": {
+            "description": "Memory per GPU.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
       "GPUType": {
         "properties": {
           "architecture": {
@@ -7416,6 +7466,15 @@
       },
       "WorkspaceTemplate": {
         "properties": {
+          "app": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkspaceTemplateApp"
+              }
+            ],
+            "description": "The web app the template runs (ComfyUI), opened as a private app link on its port.",
+            "nullable": true
+          },
           "description": {
             "type": "string"
           },
@@ -7439,6 +7498,19 @@
           },
           "python": {
             "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "WorkspaceTemplateApp": {
+        "properties": {
+          "name": {
+            "example": "ComfyUI",
+            "type": "string"
+          },
+          "port": {
+            "example": 8188,
+            "type": "integer"
           }
         },
         "type": "object"
@@ -8612,7 +8684,7 @@
         ]
       },
       "post": {
-        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, 409 `limit_reached` at the per-organization cap, and 402 `insufficient_balance` when the prepaid balance is not positive (a cluster whose balance runs out later starts no machines until credit is added). Requires the `instances:write` scope.",
+        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, 409 `limit_reached` at the per-organization cap, and 402 `insufficient_balance` when the prepaid balance is not positive (a cluster whose balance runs out later starts no machines until credit is added). Returns 409 `no_capacity`, with the nearest machine in stock as `alternative`, when no cluster supplier has the machine (in the requested regions) now; see GET /clusters/gpu-types. Requires the `instances:write` scope.",
         "operationId": "createCluster",
         "requestBody": {
           "content": {
@@ -8643,6 +8715,35 @@
           }
         },
         "summary": "Create a cluster",
+        "tags": [
+          "Clusters"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/clusters/gpu-types": {
+      "get": {
+        "description": "The GPU machines the cluster suppliers can start now, by GPU type and GPUs per machine (1, 2, 4 or 8), in stock first and cheapest first, with the regions that have stock. A create on a machine with nothing in stock is refused with 409 `no_capacity`, naming the nearest machine in stock in `alternative`. Requires the `instances:read` scope.",
+        "operationId": "listClusterGPUTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GPUStockList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List the machines clusters can start now",
         "tags": [
           "Clusters"
         ]
@@ -8756,7 +8857,7 @@
     },
     "/clusters/{id}/kubeconfig": {
       "get": {
-        "description": "A kubeconfig whose server is the cluster's Kubernetes API through GPU.ai and whose token is the API key of this request. Requires the `instances:read` scope; kubectl itself needs `instances:write`.",
+        "description": "A kubeconfig whose server is the cluster's Kubernetes API through GPU.ai and whose token is the API key of this request. Requires the `instances:read` scope; kubectl itself needs `instances:write`. The console's download carries a short-lived credential instead (a `gpuai_kc_` token valid for 8 hours, for this cluster and the signed-in user only), which the Kubernetes route accepts in place of an API key.",
         "operationId": "getClusterKubeconfig",
         "responses": {
           "200": {
@@ -13829,7 +13930,7 @@
         ]
       },
       "post": {
-        "description": "Creates a browser IDE workspace (a VS Code compatible editor, a terminal and JupyterLab) on a GPU machine and starts it. The caller becomes its owner; only the owner can open it. GPU time is billed like an instance while it runs, and its saved folder is billed for storage. Returns 422 `validation_failed` for a bad field and 409 `name_taken` or `limit_reached`. Requires the `instances:write` scope.",
+        "description": "Creates a browser IDE workspace (a VS Code compatible editor, a terminal and JupyterLab) on a GPU machine and starts it. The caller becomes its owner; only the owner can open it. GPU time is billed like an instance while it runs, and its saved folder is billed for storage. Returns 422 `validation_failed` for a bad field, 409 `name_taken` or `limit_reached`, and 409 `no_capacity` (with the nearest GPU in stock as `alternative`) when no supplier has the GPU now. Requires the `instances:write` scope.",
         "operationId": "createWorkspace",
         "requestBody": {
           "content": {
@@ -13860,6 +13961,35 @@
           }
         },
         "summary": "Create a workspace",
+        "tags": [
+          "Workspaces"
+        ]
+      },
+      "x-dark-launch": true
+    },
+    "/workspaces/gpu-types": {
+      "get": {
+        "description": "The GPU machines the workspace suppliers can start now, by GPU type and GPUs per machine, in stock first and cheapest first. A create or start on a GPU with nothing in stock is refused with 409 `no_capacity`, naming the nearest GPU in stock in `alternative`. Requires the `instances:read` scope.",
+        "operationId": "listWorkspaceGPUTypes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GPUStockList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/Problem"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "List the GPUs workspaces can start on now",
         "tags": [
           "Workspaces"
         ]
