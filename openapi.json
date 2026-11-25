@@ -1406,6 +1406,7 @@
             "$ref": "#/components/schemas/ClusterReport"
           },
           "status": {
+            "description": "provisioning while machines start, including while the cluster is rebuilt after losing its head; ready at min_nodes ready machines; scaling while machines are added or replaced and at least one is ready to take work; failed when nothing is ready or starting because starts are refused (no machine in stock, none at or under max_price_per_hour, no balance). The cluster keeps trying, and last_error says why.",
             "enum": [
               "provisioning",
               "ready",
@@ -3585,6 +3586,10 @@
           "gpu_type": {
             "example": "rtx_a6000",
             "type": "string"
+          },
+          "highest_price_per_hour": {
+            "description": "Dearest machine in stock, on the same basis as price_per_hour; 0 when not in stock. A machine starts on the cheapest one left when it is placed, so it costs from price_per_hour up to this.",
+            "type": "number"
           },
           "in_stock": {
             "type": "boolean"
@@ -5970,6 +5975,7 @@
               "gpu_vram_too_small",
               "price_changed",
               "offering_unavailable",
+              "managed_machine",
               "dedicated_ip_limit",
               "dedicated_ip_unavailable",
               "insufficient_balance",
@@ -8684,7 +8690,7 @@
         ]
       },
       "post": {
-        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, 409 `limit_reached` at the per-organization cap, and 402 `insufficient_balance` when the prepaid balance is not positive (a cluster whose balance runs out later starts no machines until credit is added). Returns 409 `no_capacity`, with the nearest machine in stock as `alternative`, when no cluster supplier has the machine (in the requested regions) now; see GET /clusters/gpu-types. Requires the `instances:write` scope.",
+        "description": "Creates a cluster of GPU machines joined on an encrypted private network (WireGuard) as one Kubernetes cluster, with Ray (KubeRay) and the KAI scheduler (NVIDIA's open-source Run:ai scheduler) installed. GPU.ai rents `min_nodes` machines right away and adds machines when work waits for GPUs, up to `max_nodes`; a machine with no GPU work for `idle_timeout` seconds is removed, down to `min_nodes`. Each machine is billed like an instance. `placement` \"spread\" places machines on different suppliers where it can. Returns 422 `validation_failed` for a bad field, 409 `name_taken` for a duplicate name, 409 `limit_reached` at the per-organization cap, and 402 `insufficient_balance` when the prepaid balance is not positive (a cluster whose balance runs out later starts no machines until credit is added). Returns 409 `no_capacity`, with the nearest machine in stock as `alternative`, when no cluster supplier has the machine (in the requested regions) now; see GET /clusters/gpu-types. Also 409 `no_capacity` when the machine is in stock but every listing costs more than `max_price_per_hour`; the detail names the cheapest price. Clusters are for work that splits into independent pieces: batch inference, hyperparameter sweeps, evaluations and data processing. They are not for training one model across several machines, because the links between machines are slow. Requires the `instances:write` scope.",
         "operationId": "createCluster",
         "requestBody": {
           "content": {
@@ -8857,7 +8863,7 @@
     },
     "/clusters/{id}/kubeconfig": {
       "get": {
-        "description": "A kubeconfig whose server is the cluster's Kubernetes API through GPU.ai and whose token is the API key of this request. Requires the `instances:read` scope; kubectl itself needs `instances:write`. The console's download carries a short-lived credential instead (a `gpuai_kc_` token valid for 8 hours, for this cluster and the signed-in user only), which the Kubernetes route accepts in place of an API key.",
+        "description": "A kubeconfig whose server is the cluster's Kubernetes API through GPU.ai and whose token is the API key of this request. Requires the `instances:read` scope; kubectl itself needs `instances:write`. The console's download carries a short-lived credential instead (a `gpuai_kc_` token valid for 8 hours, for this cluster and the signed-in user only), which the Kubernetes route accepts in place of an API key. 404 for an unknown or deleted cluster.",
         "operationId": "getClusterKubeconfig",
         "responses": {
           "200": {
@@ -9074,11 +9080,16 @@
     },
     "/clusters/{id}/ray/{path}": {
       "get": {
-        "description": "Forwards to the cluster's Ray dashboard. Use `https://api.gpu.ai/v1/clusters/{id}/ray` as the address of `ray job submit` with the API key in an Authorization header. Every method is forwarded; GET and POST are listed. Returns 503 `cluster_not_ready` until the head machine is up. Requires the `instances:write` scope.",
+        "description": "Forwards to the cluster's Ray dashboard. Use `https://api.gpu.ai/v1/clusters/{id}/ray` as the address of `ray job submit` with the API key in an Authorization header. Every method is forwarded; GET and POST are listed. In Ray's job API, `api/jobs/` lists the jobs, `api/jobs/{submission_id}` reads one and `api/jobs/{submission_id}/logs` returns its log, which Ray collects from every machine. Returns 503 `cluster_not_ready` until the head machine is up. Requires the `instances:write` scope.",
         "operationId": "rayProxyGet",
         "responses": {
           "200": {
-            "description": "The Ray dashboard's answer."
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The Ray dashboard's answer, JSON for the job API."
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -9111,11 +9122,28 @@
         }
       ],
       "post": {
-        "description": "Forwards to the cluster's Ray dashboard (see GET).",
+        "description": "Forwards to the cluster's Ray dashboard (see GET). POST `api/jobs/` with a body such as `{\"entrypoint\": \"python batch.py\", \"runtime_env\": {\"pip\": [\"vllm\"]}}` submits a job and returns its `submission_id`; POST `api/jobs/{submission_id}/stop` stops it.",
         "operationId": "rayProxyPost",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": true,
+                "description": "Ray's request body, passed through unchanged.",
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
         "responses": {
           "200": {
-            "description": "The Ray dashboard's answer."
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "The Ray dashboard's answer, JSON for the job API."
           },
           "default": {
             "$ref": "#/components/responses/Problem"
@@ -11306,7 +11334,7 @@
     },
     "/instances": {
       "get": {
-        "description": "Lists the organization's instances. By default terminated instances are excluded; pass status=terminated for the history or status=all for everything.",
+        "description": "Lists the organization's instances. By default terminated instances are excluded; pass status=terminated for the history or status=all for everything. Machines that belong to a cluster or a workspace are never listed here; see GET /clusters and GET /workspaces.",
         "operationId": "listInstances",
         "parameters": [
           {
@@ -11449,6 +11477,16 @@
             },
             "description": "Already gone — idempotent terminate (D-07)"
           },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "managed_machine. The machine belongs to a cluster or a workspace; delete the cluster or stop the workspace instead."
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -11487,6 +11525,16 @@
               }
             },
             "description": "OK"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "managed_machine. The machine belongs to a cluster or a workspace and is managed through it; the detail names which one."
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -14285,7 +14333,7 @@
       "name": "Pricing"
     },
     {
-      "description": "GPU clusters: machines of one GPU type joined on an encrypted private network as one Kubernetes cluster with Ray and the KAI scheduler (NVIDIA's open-source Run:ai scheduler), scaled between a minimum and a maximum number of machines. Machines are billed like instances.",
+      "description": "GPU clusters: machines of one GPU type joined on an encrypted private network as one Kubernetes cluster with Ray and the KAI scheduler (NVIDIA's open-source Run:ai scheduler), scaled between a minimum and a maximum number of machines. Machines are billed like instances. Clusters are for work that splits into independent pieces: batch inference, hyperparameter sweeps, evaluations and data processing. They are not for training one model across several machines, because the links between machines are slow.",
       "name": "Clusters"
     },
     {
