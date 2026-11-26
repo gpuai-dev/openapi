@@ -277,7 +277,7 @@
             }
           }
         },
-        "description": "API key lacks the required scope (OpenAI error envelope)."
+        "description": "API key lacks the required scope (`insufficient_scope`), or, for `POST /fine_tuning/jobs`, GPU.ai can't provide this service in the caller's country or region (`region_not_supported`). OpenAI error envelope.\n"
       },
       "OpenAIGone": {
         "content": {
@@ -485,6 +485,16 @@
             }
           }
         }
+      },
+      "RegionNotSupported": {
+        "content": {
+          "application/problem+json": {
+            "schema": {
+              "$ref": "#/components/schemas/Problem"
+            }
+          }
+        },
+        "description": "`region_not_supported` — GPU.ai can't provide this service in the caller's country or region. Returned only for new spending (launches, deposits, key minting); reading, stopping and deleting resources are never refused, and support stays reachable.\n"
       },
       "SSHKeyPage": {
         "content": {
@@ -5964,6 +5974,7 @@
               "unauthenticated",
               "invalid_api_key",
               "insufficient_scope",
+              "region_not_supported",
               "not_found",
               "idempotency_conflict",
               "idempotency_mismatch",
@@ -7922,7 +7933,7 @@
                 }
               }
             },
-            "description": "`insufficient_scope` — the key lacks `payments:write`. `forbidden` — not an organization admin. `org-frozen` — the organization cannot add funds."
+            "description": "`insufficient_scope` — the key lacks `payments:write`. `forbidden` — not an organization admin. `org-frozen` — the organization cannot add funds. `region_not_supported` — GPU.ai can't provide this service in the caller's country or region."
           },
           "409": {
             "content": {
@@ -8166,7 +8177,7 @@
                 }
               }
             },
-            "description": "`org-frozen` — the organization cannot add funds; contact support."
+            "description": "`org-frozen` — the organization cannot add funds; contact support. `region_not_supported` — GPU.ai can't provide this service in the caller's country or region."
           },
           "404": {
             "$ref": "#/components/responses/Problem"
@@ -8712,6 +8723,9 @@
               }
             },
             "description": "Created."
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -9854,6 +9868,9 @@
             },
             "description": "Created."
           },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -10633,6 +10650,9 @@
             },
             "description": "Created."
           },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
+          },
           "429": {
             "$ref": "#/components/responses/RateLimited"
           },
@@ -10818,6 +10838,9 @@
               }
             },
             "description": "The organization has no balance."
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "404": {
             "content": {
@@ -11124,6 +11147,9 @@
             },
             "description": "Created."
           },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
+          },
           "404": {
             "content": {
               "application/problem+json": {
@@ -11416,6 +11442,9 @@
                 }
               }
             }
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "429": {
             "$ref": "#/components/responses/RateLimited"
@@ -11760,6 +11789,9 @@
               }
             },
             "description": "The organization has no balance and the job cannot run on the free trial (the trial is off, used, or at its limit for today, or the person already used it). The detail says which. Add credits, then submit again.\n"
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "422": {
             "content": {
@@ -12172,6 +12204,9 @@
               }
             },
             "description": "Insufficient balance, or the free trial does not cover the job."
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "404": {
             "content": {
@@ -14001,6 +14036,9 @@
             },
             "description": "Created; starting."
           },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
+          },
           "404": {
             "$ref": "#/components/responses/Problem"
           },
@@ -14227,6 +14265,9 @@
               }
             },
             "description": "OK"
+          },
+          "403": {
+            "$ref": "#/components/responses/RegionNotSupported"
           },
           "404": {
             "$ref": "#/components/responses/Problem"
