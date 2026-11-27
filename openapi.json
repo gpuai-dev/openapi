@@ -1416,7 +1416,7 @@
             "$ref": "#/components/schemas/ClusterReport"
           },
           "status": {
-            "description": "provisioning while machines start, including while the cluster is rebuilt after losing its head; ready at min_nodes ready machines; scaling while machines are added or replaced and at least one is ready to take work; failed when nothing is ready or starting because starts are refused (no machine in stock, none at or under max_price_per_hour, no balance). The cluster keeps trying, and last_error says why.",
+            "description": "provisioning while machines start, including while the cluster is rebuilt after losing its head and while it waits for a machine to be listed (none in stock, or none at or under max_price_per_hour); ready at min_nodes ready machines; scaling while machines are added or replaced and at least one is ready to take work; failed when nothing is ready or starting because starts are refused for another reason (no balance, a spending limit, machines that do not start). The cluster keeps trying, and last_error says why.",
             "enum": [
               "provisioning",
               "ready",
@@ -1457,7 +1457,7 @@
             "type": "integer"
           },
           "max_nodes": {
-            "description": "Most machines under load. Defaults to min_nodes.",
+            "description": "Most machines under load. Defaults to min_nodes, or to 2 when min_nodes is omitted.",
             "minimum": 1,
             "type": "integer"
           },
@@ -1466,8 +1466,8 @@
             "type": "number"
           },
           "min_nodes": {
-            "default": 2,
-            "description": "Machines kept at all times.",
+            "default": 1,
+            "description": "Machines kept at all times. One machine is a working cluster; Ray runs on its GPUs.",
             "minimum": 1,
             "type": "integer"
           },
@@ -7274,7 +7274,12 @@
             "description": "GPU price of the current machine (0 when stopped).",
             "type": "number"
           },
+          "save_interval_seconds": {
+            "description": "How often the folder is saved while the workspace runs, besides every stop. 0 means only when it stops.",
+            "type": "integer"
+          },
           "saved_at": {
+            "description": "When the folder was last saved (while running or on stop).",
             "format": "date-time",
             "type": [
               "string",
@@ -7288,7 +7293,8 @@
               "stopping",
               "stopped",
               "failed",
-              "deleting"
+              "deleting",
+              "deleted"
             ],
             "type": "string"
           },
@@ -7539,6 +7545,18 @@
               "$ref": "#/components/schemas/WorkspaceTemplate"
             },
             "type": "array"
+          },
+          "save_interval_seconds": {
+            "description": "How often a running workspace saves its folder, besides every stop. 0 means only when it stops.",
+            "type": "integer"
+          },
+          "storage_limit_bytes": {
+            "description": "The most a workspace's saved folder may hold.",
+            "type": "integer"
+          },
+          "storage_price_gb_month": {
+            "description": "Storage price of a saved folder, USD per GB-month (1 GB = 1e9 bytes), charged hourly.",
+            "type": "number"
           }
         },
         "type": "object"
@@ -8738,8 +8756,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/clusters/gpu-types": {
       "get": {
@@ -8767,8 +8784,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/clusters/{id}": {
       "delete": {
@@ -8872,8 +8888,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/clusters/{id}/kubeconfig": {
       "get": {
@@ -8913,8 +8928,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/clusters/{id}/kubernetes/{path}": {
       "get": {
@@ -8969,8 +8983,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/clusters/{id}/queues": {
       "get": {
@@ -9010,8 +9023,7 @@
             "type": "string"
           }
         }
-      ],
-      "x-dark-launch": true
+      ]
     },
     "/clusters/{id}/queues/{name}": {
       "delete": {
@@ -9089,8 +9101,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/clusters/{id}/ray/{path}": {
       "get": {
@@ -9167,8 +9178,7 @@
         "tags": [
           "Clusters"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/community/earnings": {
       "get": {
@@ -13982,8 +13992,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces": {
       "get": {
@@ -14050,8 +14059,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces/gpu-types": {
       "get": {
@@ -14079,8 +14087,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces/{id}": {
       "delete": {
@@ -14103,7 +14110,7 @@
         ]
       },
       "get": {
-        "description": "Returns one workspace with its recent machines and its GPU and storage cost so far. Requires the `instances:read` scope.",
+        "description": "Returns one workspace with its recent machines and its GPU and storage cost so far. A deleted workspace stays readable with status `deleted` and its final cost; the list leaves it out. Requires the `instances:read` scope.",
         "operationId": "getWorkspace",
         "responses": {
           "200": {
@@ -14175,8 +14182,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces/{id}/open": {
       "parameters": [
@@ -14226,8 +14232,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces/{id}/start": {
       "parameters": [
@@ -14280,8 +14285,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     },
     "/workspaces/{id}/stop": {
       "parameters": [
@@ -14321,8 +14325,7 @@
         "tags": [
           "Workspaces"
         ]
-      },
-      "x-dark-launch": true
+      }
     }
   },
   "security": [
