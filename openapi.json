@@ -2287,7 +2287,7 @@
           },
           "hourly_fee": {
             "description": "USD per hour while attached, from the instance becoming running until release.",
-            "example": 0.01,
+            "example": 0.03,
             "format": "double",
             "type": "number"
           },
@@ -5778,7 +5778,7 @@
             "type": "object"
           },
           "hint": {
-            "description": "Advisory pointer to Jobs (POST /jobs), present only on the synchronous 202 from POST /instances and only on some launches: when the request is a one-off batch run, or the organization launched many instances in the last 24 hours that each ran for less than 15 minutes. Same text as the GPUAI-Hint header. Never on GET /operations/{id} polls, and it never changes the launch.",
+            "description": "Advisory line, present only on the synchronous 202 from POST /instances and only on some launches: a pointer to Jobs (POST /jobs) when the request is a one-off batch run, or the organization launched many instances in the last 24 hours that each ran for less than an hour; otherwise, when the organization is eligible for one, the free trial of the Cloud IDE, Ray clusters, or Functions. Same text as the GPUAI-Hint header. Never on GET /operations/{id} polls, and it never changes the launch.",
             "type": "string"
           },
           "kind": {
@@ -6333,6 +6333,57 @@
         },
         "required": [
           "value"
+        ],
+        "type": "object"
+      },
+      "SoftwareTrial": {
+        "description": "An organization's standing in the free trial of Functions, Ray Clusters or the Cloud IDE. The same shape as JobTrial without the Jobs-only funding fields.",
+        "properties": {
+          "cap_cents": {
+            "description": "The most the trial credits one organization, in cents.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "credited_cents": {
+            "description": "Trial credit added to the balance so far, in cents.",
+            "format": "int64",
+            "type": "integer"
+          },
+          "eligible": {
+            "description": "True while what the product bills this organization is credited back.",
+            "type": "boolean"
+          },
+          "enabled": {
+            "description": "False when this deployment runs no trial for the product. Every other field is then zero.",
+            "type": "boolean"
+          },
+          "message": {
+            "description": "The line to show the user, e.g. \"Your first Ray clusters are free, up to $10.\" Omitted when not eligible.",
+            "type": "string"
+          },
+          "reason": {
+            "description": "Why the organization is not eligible. Omitted when eligible.",
+            "enum": [
+              "used",
+              "existing_user",
+              "internal",
+              "frozen",
+              "linked_account"
+            ],
+            "type": "string"
+          },
+          "remaining_cents": {
+            "description": "How much more of the product's cost the trial covers, in cents.",
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "eligible",
+          "cap_cents",
+          "credited_cents",
+          "remaining_cents"
         ],
         "type": "object"
       },
@@ -8786,6 +8837,34 @@
         ]
       }
     },
+    "/clusters/trial": {
+      "get": {
+        "description": "Reports the Clusters free trial for this organization. When the deployment runs one, an organization's first Ray clusters are free up to `cap_cents`. What their machines are billed is credited back to its balance as it is billed, until the credits reach the cap. One trial per organization, for organizations that had not used Clusters before the trial started. `enabled` is false when there is no trial. Requires the `instances:read` scope.",
+        "operationId": "getClusterTrial",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoftwareTrial"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Whether this organization's first Ray clusters are free",
+        "tags": [
+          "Clusters"
+        ]
+      }
+    },
     "/clusters/{id}": {
       "delete": {
         "description": "Deletes the cluster. Every machine is terminated within seconds and stops billing when terminated; the cost stays in your usage. Requires the `instances:write` scope.",
@@ -10676,6 +10755,34 @@
         ]
       }
     },
+    "/functions/trial": {
+      "get": {
+        "description": "Reports the Functions free trial for this organization. When the deployment runs one, an organization's first function runs are free up to `cap_cents`. What their machines are billed, start and idle time included, is credited back to its balance as it is billed, until the credits reach the cap. One trial per organization, for organizations that had not used Functions before the trial started. `enabled` is false when there is no trial. Requires the `functions:read` scope.",
+        "operationId": "getFunctionTrial",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoftwareTrial"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Whether this organization's first function runs are free",
+        "tags": [
+          "Functions"
+        ]
+      }
+    },
     "/functions/{id}": {
       "delete": {
         "description": "The function stops taking calls, its queued calls are cancelled, a call that is executing is stopped, and its machines are released, which ends their billing. The name can be reused afterwards. Requires the `functions:write` scope.",
@@ -11440,7 +11547,7 @@
                 "$ref": "#/components/headers/BalanceWarning"
               },
               "GPUAI-Hint": {
-                "description": "Advisory only, and absent on most launches. Sent to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends, when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) or the organization launched many instances in the last 24 hours that each ran for less than 15 minutes. The same text is in the response body's hint field. It never changes the launch.",
+                "description": "Advisory only, and absent on most launches. Sent to point at Jobs (POST /jobs), which start a machine for the work and shut it down a few minutes after it ends, when the request is a one-off batch run (a custom image with a command and auto_terminate_hours) or the organization launched many instances in the last 24 hours that each ran for less than an hour. Otherwise, when the organization is eligible for the free trial of the Cloud IDE (workspaces), Ray clusters, or Functions, it names one of them (Ray clusters first for a launch of two or more GPUs, the Cloud IDE first otherwise). The same text is in the response body's hint field. It never changes the launch.",
                 "schema": {
                   "type": "string"
                 }
@@ -14084,6 +14191,34 @@
           }
         },
         "summary": "List the GPUs workspaces can start on now",
+        "tags": [
+          "Workspaces"
+        ]
+      }
+    },
+    "/workspaces/trial": {
+      "get": {
+        "description": "Reports the Workspaces free trial for this organization. When the deployment runs one, an organization's first Cloud IDE sessions are free up to `cap_cents`. What their GPU machines and saved folder storage are billed is credited back to its balance as it is billed, until the credits reach the cap. One trial per organization, for organizations that had not used Workspaces before the trial started. `enabled` is false when there is no trial. Requires the `instances:read` scope.",
+        "operationId": "getWorkspaceTrial",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SoftwareTrial"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "default": {
+            "$ref": "#/components/responses/Problem"
+          }
+        },
+        "summary": "Whether this organization's first Cloud IDE sessions are free",
         "tags": [
           "Workspaces"
         ]
